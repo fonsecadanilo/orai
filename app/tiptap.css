@@ -1,0 +1,294 @@
+/* TipTap Editor Styles for Oria Design System */
+
+.ProseMirror {
+    outline: none;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: #a1a1aa;
+    pointer-events: none;
+    height: 0;
+}
+
+.ProseMirror h2 {
+    font-size: 1.5em;
+    font-weight: bold;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+    line-height: 1.3;
+    color: #18181b;
+}
+
+.ProseMirror h3 {
+    font-size: 1.25em;
+    font-weight: bold;
+    margin-top: 0.875em;
+    margin-bottom: 0.5em;
+    line-height: 1.4;
+    color: #18181b;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+    padding-left: 1.5rem;
+    margin: 0.75rem 0;
+}
+
+.ProseMirror ul li {
+    list-style-type: disc;
+    margin: 0.25rem 0;
+}
+
+.ProseMirror ol li {
+    list-style-type: decimal;
+    margin: 0.25rem 0;
+}
+
+.ProseMirror blockquote {
+    border-left: 3px solid #e4e4e7;
+    padding-left: 1rem;
+    margin: 1rem 0;
+    color: #71717a;
+    font-style: italic;
+}
+
+.ProseMirror pre {
+    background: #18181b;
+    color: #fafafa;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    margin: 1rem 0;
+    overflow-x: auto;
+}
+
+.ProseMirror pre code {
+    background: none;
+    color: inherit;
+    font-size: 0.875rem;
+    padding: 0;
+}
+
+.ProseMirror code {
+    background: #f4f4f5;
+    color: #18181b;
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+}
+
+.ProseMirror p {
+    margin: 0.5rem 0;
+}
+
+/* Mention base styles */
+.ProseMirror .mention,
+.ProseMirror [data-type="mention"] {
+    border-radius: 4px;
+    padding: 1px 8px 2px 6px;
+    font-weight: 500;
+    font-size: 0.8125rem;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+    cursor: default;
+    transition: all 0.12s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    vertical-align: baseline;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+    margin: 0 2px;
+    white-space: nowrap;
+    background-color: #f4f4f5;
+    color: #3f3f46;
+}
+
+/* Icon styles - using SVG background */
+.ProseMirror .mention::before,
+.ProseMirror [data-type="mention"]::before {
+    content: "";
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    flex-shrink: 0;
+}
+
+/* Flow mention - Blue - Workflow icon */
+.ProseMirror .mention.mention-flow,
+.ProseMirror .mention[data-mention-type="flow"],
+.ProseMirror [data-type="mention"][data-mention-type="flow"] {
+    background-color: #dbeafe !important;
+    color: #1d4ed8 !important;
+}
+
+.ProseMirror .mention.mention-flow::before,
+.ProseMirror .mention[data-mention-type="flow"]::before,
+.ProseMirror [data-type="mention"][data-mention-type="flow"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%231d4ed8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='8' height='8' x='3' y='3' rx='2'/%3E%3Cpath d='M7 11v4a2 2 0 0 0 2 2h4'/%3E%3Crect width='8' height='8' x='13' y='13' rx='2'/%3E%3C/svg%3E");
+}
+
+.ProseMirror .mention.mention-flow:hover,
+.ProseMirror .mention[data-mention-type="flow"]:hover {
+    background-color: #bfdbfe !important;
+}
+
+/* Trigger mention - Amber - Zap icon */
+.ProseMirror .mention.mention-trigger,
+.ProseMirror .mention[data-node-type="trigger"],
+.ProseMirror [data-type="mention"][data-node-type="trigger"] {
+    background-color: #fef3c7 !important;
+    color: #b45309 !important;
+}
+
+.ProseMirror .mention.mention-trigger::before,
+.ProseMirror .mention[data-node-type="trigger"]::before,
+.ProseMirror [data-type="mention"][data-node-type="trigger"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23b45309' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z'/%3E%3C/svg%3E");
+}
+
+.ProseMirror .mention.mention-trigger:hover,
+.ProseMirror .mention[data-node-type="trigger"]:hover {
+    background-color: #fde68a !important;
+}
+
+/* Logic/Condition mention - Violet - GitBranch icon */
+.ProseMirror .mention.mention-logic,
+.ProseMirror .mention[data-node-type="logic"],
+.ProseMirror [data-type="mention"][data-node-type="logic"] {
+    background-color: #ede9fe !important;
+    color: #6d28d9 !important;
+}
+
+.ProseMirror .mention.mention-logic::before,
+.ProseMirror .mention[data-node-type="logic"]::before,
+.ProseMirror [data-type="mention"][data-node-type="logic"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%236d28d9' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='6' x2='6' y1='3' y2='15'/%3E%3Ccircle cx='18' cy='6' r='3'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Cpath d='M18 9a9 9 0 0 1-9 9'/%3E%3C/svg%3E");
+}
+
+.ProseMirror .mention.mention-logic:hover,
+.ProseMirror .mention[data-node-type="logic"]:hover {
+    background-color: #ddd6fe !important;
+}
+
+/* Action mention - Green - CheckCircle2 icon */
+.ProseMirror .mention.mention-action,
+.ProseMirror .mention[data-node-type="action"],
+.ProseMirror [data-type="mention"][data-node-type="action"] {
+    background-color: #dcfce7 !important;
+    color: #15803d !important;
+}
+
+.ProseMirror .mention.mention-action::before,
+.ProseMirror .mention[data-node-type="action"]::before,
+.ProseMirror [data-type="mention"][data-node-type="action"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2315803d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m9 12 2 2 4-4'/%3E%3C/svg%3E");
+}
+
+.ProseMirror .mention.mention-action:hover,
+.ProseMirror .mention[data-node-type="action"]:hover {
+    background-color: #bbf7d0 !important;
+}
+
+/* Tippy overrides for mention dropdown */
+.tippy-box {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    border: none !important;
+}
+
+.tippy-box > .tippy-content {
+    padding: 0 !important;
+    background-color: transparent !important;
+}
+
+.tippy-box .tippy-arrow {
+    display: none !important;
+}
+
+/* Ensure tippy container is above modal */
+[data-tippy-root] {
+    z-index: 99999 !important;
+}
+
+/* Code block with syntax highlighting */
+.ProseMirror pre {
+    background: #18181b;
+    color: #fafafa;
+    font-family: 'JetBrains Mono', 'Monaco', 'Courier New', monospace;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin: 1rem 0;
+    overflow-x: auto;
+    position: relative;
+}
+
+.ProseMirror pre code {
+    background: none;
+    color: inherit;
+    font-size: 0.875rem;
+    padding: 0;
+    display: block;
+    line-height: 1.6;
+}
+
+.ProseMirror pre code.hljs {
+    display: block;
+    overflow-x: auto;
+    padding: 0;
+}
+
+/* Highlight.js theme adjustments for dark background */
+.ProseMirror pre .hljs-keyword,
+.ProseMirror pre .hljs-selector-tag,
+.ProseMirror pre .hljs-built_in,
+.ProseMirror pre .hljs-name,
+.ProseMirror pre .hljs-tag {
+    color: #c792ea;
+}
+
+.ProseMirror pre .hljs-string,
+.ProseMirror pre .hljs-title,
+.ProseMirror pre .hljs-section,
+.ProseMirror pre .hljs-attribute,
+.ProseMirror pre .hljs-literal,
+.ProseMirror pre .hljs-template-tag,
+.ProseMirror pre .hljs-template-variable,
+.ProseMirror pre .hljs-type,
+.ProseMirror pre .hljs-addition {
+    color: #c3e88d;
+}
+
+.ProseMirror pre .hljs-comment,
+.ProseMirror pre .hljs-quote,
+.ProseMirror pre .hljs-deletion,
+.ProseMirror pre .hljs-meta {
+    color: #546e7a;
+}
+
+.ProseMirror pre .hljs-keyword,
+.ProseMirror pre .hljs-selector-tag,
+.ProseMirror pre .hljs-literal,
+.ProseMirror pre .hljs-title,
+.ProseMirror pre .hljs-section,
+.ProseMirror pre .hljs-doctag,
+.ProseMirror pre .hljs-type,
+.ProseMirror pre .hljs-name,
+.ProseMirror pre .hljs-strong {
+    font-weight: bold;
+}
+
+.ProseMirror pre .hljs-number {
+    color: #f78c6c;
+}
+
+.ProseMirror pre .hljs-function,
+.ProseMirror pre .hljs-class .hljs-title {
+    color: #82aaff;
+}
