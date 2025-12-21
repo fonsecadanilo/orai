@@ -1,8 +1,69 @@
-import { X, PanelRightClose, CheckCircle2, Circle } from "lucide-react";
-import { useState } from "react";
+import { X, PanelRightClose, CheckCircle2, Circle, Zap, GitBranch, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import type { Node } from "reactflow";
 
-export function DetailsSheet({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+// Tipos para os dados dos nodes
+interface TriggerNodeData {
+    label: string;
+    description?: string;
+}
+
+interface LogicNodeData {
+    label: string;
+    tag?: string;
+}
+
+interface ActionNodeData {
+    label: string;
+    description?: string;
+    type: "success" | "error";
+}
+
+type NodeData = TriggerNodeData | LogicNodeData | ActionNodeData;
+
+interface DetailsSheetProps {
+    isOpen: boolean;
+    onClose: () => void;
+    selectedNode: Node<NodeData> | null;
+}
+
+// Mapeamento de tipo para label legível
+const nodeTypeLabels: Record<string, string> = {
+    trigger: "Trigger Node",
+    logic: "Condition Node",
+    action: "Action Node",
+};
+
+// Ícone baseado no tipo do node
+function NodeTypeIcon({ type }: { type: string }) {
+    switch (type) {
+        case "trigger":
+            return <Zap className="w-3.5 h-3.5 text-muted-foreground" />;
+        case "logic":
+            return <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />;
+        case "action":
+            return <CheckCircle2 className="w-3.5 h-3.5 text-muted-foreground" />;
+        default:
+            return <Circle className="w-3.5 h-3.5 text-muted-foreground" />;
+    }
+}
+
+export function DetailsSheet({ isOpen, onClose, selectedNode }: DetailsSheetProps) {
     const [activeTab, setActiveTab] = useState<"details" | "tasks">("details");
+
+    // Reset para a aba de detalhes quando um novo node é selecionado
+    useEffect(() => {
+        if (selectedNode) {
+            setActiveTab("details");
+        }
+    }, [selectedNode?.id]);
+
+    const nodeType = selectedNode?.type || "unknown";
+    const nodeData = selectedNode?.data;
+    const nodeLabel = nodeData?.label || "Untitled Node";
+    const nodeDescription = (nodeData as TriggerNodeData | ActionNodeData)?.description;
+    const nodeTag = (nodeData as LogicNodeData)?.tag;
+    const actionType = (nodeData as ActionNodeData)?.type;
 
     return (
         <aside
@@ -47,7 +108,7 @@ export function DetailsSheet({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                         >
                             Tasks
                             <span className="bg-muted text-muted-foreground text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                                3
+                                0
                             </span>
                         </button>
                     </div>
@@ -64,71 +125,78 @@ export function DetailsSheet({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                     >
                         {/* Metadata */}
                         <div className="flex items-center justify-between mb-6">
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest border border-border px-2 py-1 rounded-md">
-                                Logic Node
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <NodeTypeIcon type={nodeType} />
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest border border-border px-2 py-1 rounded-md">
+                                    {nodeTypeLabels[nodeType] || "Node"}
+                                </span>
+                            </div>
                             <span className="text-[10px] font-mono text-muted-foreground">
-                                ID: LOGIC-02
+                                ID: {selectedNode?.id?.toUpperCase() || "N/A"}
                             </span>
                         </div>
 
                         {/* Title */}
                         <h2 className="font-semibold text-3xl text-card-foreground leading-tight mb-3 tracking-tight">
-                            Email Validation
+                            {nodeLabel}
                         </h2>
-                        <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
-                            Verifies syntactic integrity and domain existence of the address
-                            provided by the user.
-                        </p>
+                        
+                        {/* Description */}
+                        {nodeDescription && (
+                            <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
+                                {nodeDescription}
+                            </p>
+                        )}
 
-                        {/* Rules */}
-                        <div className="mb-8">
-                            <h3 className="text-[10px] font-bold uppercase tracking-widest text-card-foreground mb-4">
-                                Business Rules
-                            </h3>
-                            <ul className="space-y-3">
-                                <li className="flex gap-3 text-sm text-muted-foreground items-start">
-                                    <span className="text-muted-foreground/50 font-medium text-xs mt-0.5 select-none">
-                                        01
-                                    </span>
-                                    <span>Validate domain to ensure delivery.</span>
-                                </li>
-                                <li className="flex gap-3 text-sm text-muted-foreground items-start">
-                                    <span className="text-muted-foreground/50 font-medium text-xs mt-0.5 select-none">
-                                        02
-                                    </span>
-                                    <span>Block disposable providers (blocklist v2).</span>
-                                </li>
-                                <li className="flex gap-3 text-sm text-muted-foreground items-start">
-                                    <span className="text-muted-foreground/50 font-medium text-xs mt-0.5 select-none">
-                                        03
-                                    </span>
-                                    <span>Normalize input (lowercase + trim).</span>
-                                </li>
-                            </ul>
-                        </div>
+                        {/* Tag (para Logic Nodes) */}
+                        {nodeTag && (
+                            <div className="mb-8">
+                                <h3 className="text-[10px] font-bold uppercase tracking-widest text-card-foreground mb-4">
+                                    Condition Tag
+                                </h3>
+                                <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-muted border border-border text-sm text-muted-foreground">
+                                    {nodeTag}
+                                </span>
+                            </div>
+                        )}
 
-                        {/* Dependencies */}
-                        <div className="mb-10 p-4 bg-muted/50 rounded-xl border border-border">
+                        {/* Action Type (para Action Nodes) */}
+                        {nodeType === "action" && actionType && (
+                            <div className="mb-8">
+                                <h3 className="text-[10px] font-bold uppercase tracking-widest text-card-foreground mb-4">
+                                    Action Type
+                                </h3>
+                                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
+                                    actionType === "success" 
+                                        ? "bg-emerald-50 border-emerald-200 text-emerald-700" 
+                                        : "bg-red-50 border-red-200 text-red-700"
+                                }`}>
+                                    {actionType === "success" ? (
+                                        <CheckCircle2 className="w-4 h-4" />
+                                    ) : (
+                                        <AlertCircle className="w-4 h-4" />
+                                    )}
+                                    <span className="text-sm font-medium capitalize">{actionType}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Node Position Info */}
+                        <div className="mb-8 p-4 bg-muted/50 rounded-xl border border-border">
                             <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">
-                                Dependencies
+                                Position
                             </h3>
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground font-medium">
-                                        Registration Flow
-                                    </span>
-                                    <span className="text-[9px] font-bold text-muted-foreground bg-card border border-border px-1.5 py-0.5 rounded shadow-sm">
-                                        INPUT
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] text-muted-foreground mb-1">X</span>
+                                    <span className="text-sm font-mono text-card-foreground">
+                                        {Math.round(selectedNode?.position?.x || 0)}px
                                     </span>
                                 </div>
-                                <div className="h-px w-full bg-muted"></div>
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground font-medium">
-                                        Anti-Fraud Check
-                                    </span>
-                                    <span className="text-[9px] font-bold text-muted-foreground bg-card border border-border px-1.5 py-0.5 rounded shadow-sm">
-                                        SYNC
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] text-muted-foreground mb-1">Y</span>
+                                    <span className="text-sm font-mono text-card-foreground">
+                                        {Math.round(selectedNode?.position?.y || 0)}px
                                     </span>
                                 </div>
                             </div>
@@ -138,21 +206,21 @@ export function DetailsSheet({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                         <div className="mt-auto pt-6 border-t border-border flex items-center justify-between">
                             <div className="flex items-center gap-2.5">
                                 <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">
-                                    AM
+                                    U
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="text-[11px] font-semibold text-card-foreground">
-                                        Ana M.
+                                        User
                                     </span>
                                     <span className="text-[9px] text-muted-foreground">
-                                        Última revisão hoje
+                                        Criado agora
                                     </span>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100/50">
-                                    <div className="w-1 h-1 rounded-full bg-emerald-500"></div>
-                                    <span className="text-[10px] font-semibold">Approved</span>
+                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100/50">
+                                    <div className="w-1 h-1 rounded-full bg-blue-500"></div>
+                                    <span className="text-[10px] font-semibold">Draft</span>
                                 </div>
                             </div>
                         </div>
@@ -165,57 +233,33 @@ export function DetailsSheet({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                             : "translate-x-8 opacity-0 pointer-events-none"
                             }`}
                     >
-                        {/* Logic for tasks tab content same as HTML */}
                         <div className="flex flex-col h-full">
                             <div className="mb-8">
                                 <h2 className="font-semibold text-2xl text-card-foreground mb-2 tracking-tight">
                                     Implementation Tasks
                                 </h2>
+                                <p className="text-sm text-muted-foreground">
+                                    Tasks for "{nodeLabel}"
+                                </p>
                                 <div className="flex items-center gap-4 mt-4">
                                     <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                                        <div className="h-full bg-primary w-[65%] rounded-full"></div>
+                                        <div className="h-full bg-primary w-[0%] rounded-full"></div>
                                     </div>
-                                    <span className="text-xs font-medium text-muted-foreground">65%</span>
+                                    <span className="text-xs font-medium text-muted-foreground">0%</span>
                                 </div>
                             </div>
 
-                            <div className="space-y-3">
-                                {/* Task Item 1 */}
-                                <div className="p-4 rounded-xl border border-border bg-card hover:border-border transition-colors group/task cursor-pointer">
-                                    <div className="flex items-start justify-between mb-2">
-                                        <span className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-100">
-                                            Done
-                                        </span>
-                                        <div className="w-6 h-6 rounded-full bg-muted border border-border flex items-center justify-center text-[10px] font-bold text-muted-foreground">
-                                            JP
-                                        </div>
-                                    </div>
-                                    <h3 className="text-sm font-medium text-card-foreground line-through text-muted-foreground">
-                                        Design Validation
-                                    </h3>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        Verify logic with product team
-                                    </p>
+                            {/* Empty state */}
+                            <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
+                                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                                    <CheckCircle2 className="w-8 h-8 text-muted-foreground/50" />
                                 </div>
-
-                                {/* Task Item 2 */}
-                                <div className="p-4 rounded-xl border border-border bg-card shadow-sm group/task cursor-pointer">
-                                    <div className="flex items-start justify-between mb-2">
-                                        <span className="px-2 py-1 rounded bg-amber-50 text-amber-700 text-[10px] font-semibold border border-amber-100 flex items-center gap-1">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
-                                            In Progress
-                                        </span>
-                                        <div className="w-6 h-6 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-600">
-                                            AM
-                                        </div>
-                                    </div>
-                                    <h3 className="text-sm font-medium text-card-foreground">
-                                        API Integration
-                                    </h3>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        Connect with SendGrid validation endpoint
-                                    </p>
-                                </div>
+                                <h3 className="text-sm font-medium text-card-foreground mb-2">
+                                    No tasks yet
+                                </h3>
+                                <p className="text-xs text-muted-foreground max-w-[200px]">
+                                    Tasks for this node will appear here when created.
+                                </p>
                             </div>
                         </div>
                     </div>

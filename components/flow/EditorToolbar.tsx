@@ -1,10 +1,11 @@
 "use client";
 
-import { Type, StickyNote, Boxes, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { Type, StickyNote, Boxes, ChevronDown, Brain } from "lucide-react";
+import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase/client";
 
-export type ToolType = "none" | "text" | "postit" | "node";
+export type ToolType = "none" | "text" | "postit" | "node" | "brain";
 export type NodeType = "trigger" | "logic" | "action";
 
 interface EditorToolbarProps {
@@ -12,6 +13,9 @@ interface EditorToolbarProps {
     onToolSelect: (tool: ToolType) => void;
     selectedNodeType: NodeType | null;
     onNodeTypeSelect: (type: NodeType) => void;
+    onBrainBlockCreate?: (data: { canvas_block: unknown; thread: unknown }) => void;
+    projectId?: number;
+    userId?: number;
 }
 
 export function EditorToolbar({
@@ -19,8 +23,12 @@ export function EditorToolbar({
     onToolSelect,
     selectedNodeType,
     onNodeTypeSelect,
+    onBrainBlockCreate,
+    projectId = 1,
+    userId = 1,
 }: EditorToolbarProps) {
     const [isNodeMenuOpen, setIsNodeMenuOpen] = useState(false);
+    const [isCreatingBrain, setIsCreatingBrain] = useState(false);
 
     const handleToolClick = (tool: ToolType) => {
         if (activeTool === tool) {
@@ -35,6 +43,136 @@ export function EditorToolbar({
         setIsNodeMenuOpen(false);
         onToolSelect("node");
     };
+
+    // Handler para criar Brain Block (usando Supabase client diretamente)
+    const handleBrainClick = useCallback(async () => {
+        if (isCreatingBrain) return;
+        
+        setIsCreatingBrain(true);
+        onToolSelect("brain");
+
+        const now = new Date().toISOString();
+        const threadId = crypto.randomUUID();
+        const canvasBlockId = crypto.randomUUID();
+
+        try {
+            // Tentar criar no banco de dados
+            // 1. Criar thread
+            const { data: thread, error: threadError } = await supabase
+                .from("brain_threads")
+                .insert({
+                    id: threadId,
+                    project_id: projectId,
+                    user_id: userId,
+                    title: `Brain ${new Date().toLocaleDateString("pt-BR")}`,
+                    status: "active",
+                    messages_count: 0,
+                    last_message_at: now,
+                    created_at: now,
+                    updated_at: now,
+                })
+                .select()
+                .single();
+
+            if (threadError) {
+                console.warn("Could not persist thread to DB:", threadError.message);
+                // Fallback: criar apenas localmente
+                createLocalBrainBlock(canvasBlockId, threadId, now);
+                return;
+            }
+
+            // 2. Criar canvas block
+            const { data: canvasBlock, error: blockError } = await supabase
+                .from("brain_canvas_blocks")
+                .insert({
+                    id: canvasBlockId,
+                    project_id: projectId,
+                    thread_id: threadId,
+                    block_type: "brain_chat",
+                    position_x: 100,
+                    position_y: 100,
+                    width: 500,
+                    height: 450,
+                    streaming: false,
+                    content: "",
+                    mode: null,
+                    model: null,
+                    created_at: now,
+                    updated_at: now,
+                })
+                .select()
+                .single();
+
+            if (blockError) {
+                console.warn("Could not persist canvas block to DB:", blockError.message);
+                // Fallback: criar apenas localmente com thread já salvo
+                createLocalBrainBlock(canvasBlockId, threadId, now, thread);
+                return;
+            }
+
+            console.log("🧠 Brain block created and persisted:", { thread, canvasBlock });
+
+            if (onBrainBlockCreate) {
+                onBrainBlockCreate({
+                    canvas_block: canvasBlock,
+                    thread: thread,
+                });
+            }
+        } catch (error) {
+            console.warn("Error creating Brain block in DB, creating locally:", error);
+            // Fallback: criar apenas localmente
+            createLocalBrainBlock(canvasBlockId, threadId, now);
+        } finally {
+            setIsCreatingBrain(false);
+            onToolSelect("none");
+        }
+    }, [isCreatingBrain, onToolSelect, onBrainBlockCreate, projectId, userId]);
+
+    // Função auxiliar para criar Brain Block localmente (fallback quando DB não está disponível)
+    const createLocalBrainBlock = useCallback((
+        canvasBlockId: string, 
+        threadId: string, 
+        now: string,
+        existingThread?: unknown
+    ) => {
+        const localThread = existingThread || {
+            id: threadId,
+            project_id: projectId,
+            user_id: userId,
+            title: `Brain ${new Date().toLocaleDateString("pt-BR")}`,
+            status: "active",
+            messages_count: 0,
+            last_message_at: now,
+            created_at: now,
+            updated_at: now,
+        };
+
+        const localCanvasBlock = {
+            id: canvasBlockId,
+            project_id: projectId,
+            thread_id: threadId,
+            block_type: "brain_chat",
+            position_x: 100,
+            position_y: 100,
+            width: 500,
+            height: 450,
+            streaming: false,
+            content: "",
+            mode: null,
+            model: null,
+            created_at: now,
+            updated_at: now,
+        };
+
+        console.log("🧠 Brain block created locally (not persisted):", { localThread, localCanvasBlock });
+
+        if (onBrainBlockCreate) {
+            onBrainBlockCreate({
+                canvas_block: localCanvasBlock,
+                thread: localThread,
+            });
+        }
+    }, [projectId, userId, onBrainBlockCreate]);
 
     return (
         <div className="flex items-center gap-1 bg-card/95 backdrop-blur-sm rounded-xl shadow-lg border border-border p-1.5 pointer-events-auto">
@@ -66,6 +204,23 @@ export function EditorToolbar({
             >
                 <StickyNote className="w-4 h-4" />
                 <span className="hidden sm:inline">Post-it</span>
+            </button>
+
+            {/* Brain Block Tool */}
+            <button
+                onClick={handleBrainClick}
+                disabled={isCreatingBrain}
+                className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                    activeTool === "brain"
+                        ? "bg-violet-500 text-white shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                    isCreatingBrain && "opacity-50 cursor-wait"
+                )}
+                title="Adicionar Brain Block (IA)"
+            >
+                <Brain className={cn("w-4 h-4", isCreatingBrain && "animate-pulse")} />
+                <span className="hidden sm:inline">Brain</span>
             </button>
 
             {/* Divider */}
@@ -160,4 +315,19 @@ export function EditorToolbar({
         </div>
     );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

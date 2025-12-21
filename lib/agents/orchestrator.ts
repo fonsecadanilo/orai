@@ -1,21 +1,23 @@
 /**
- * Orquestrador dos Agentes v2.0
+ * Orquestrador dos Agentes v3.0
  * 
- * NOVA ARQUITETURA DETERMINÍSTICA:
+ * NOVA ARQUITETURA COM ENRIQUECIMENTO:
  * 
- * Pipeline (10 etapas):
- * 1. Criar Master Rule (LLM)
+ * Pipeline (12 etapas):
+ * 1. Criar Master Rule (LLM) - com pages_involved
  * 2. Validar Master Rule (Zod)
- * 3. Criar Jornada do Usuário (LLM)
+ * 3. Criar Jornada do Usuário (LLM) - com page_key
  * 4. Validar Jornada (Zod)
- * 5. Criar Subrules usando {masterRule + journey} (LLM)
- * 6. Validar Subrules (schema + regras incrementais)
- * 7. Se falhar, executar Autofix com relatório
- * 8. Gerar Flow com engine determinística (CÓDIGO)
- * 9. Validar grafo final
- * 10. Retornar: fluxo + jornada + features + warnings
+ * 5. Enriquecer Fluxo com padrões SaaS (LLM) - NOVO
+ * 6. Mapear Páginas e Transições (CÓDIGO) - NOVO
+ * 7. Criar Subrules usando {masterRule + journey + enrichedFlow + pageContext} (LLM)
+ * 8. Validar Subrules (schema + regras incrementais + SaaS)
+ * 9. Se falhar, executar Autofix com relatório
+ * 10. Gerar Flow com engine determinística (CÓDIGO)
+ * 11. Validar grafo final + validações SaaS
+ * 12. Retornar: fluxo + jornada + features + pages + warnings
  * 
- * O LLM cuida apenas de semântica.
+ * O LLM cuida de semântica e UX.
  * O código cuida de motor, estrutura, gramática, layout e indexação.
  */
 
@@ -33,6 +35,11 @@ import { createMasterRule } from "./master-rule-creator";
 import { decomposeIntoSubrules } from "./subrules-decomposer";
 import { createJourneyAndFeatures, extractBusinessRulesFromContent } from "./journey-features-creator";
 import { generateFlow } from "./flow-generator";
+import { enrichFlow, type EnrichedFlow, type FlowEnricherResponse } from "./flow-enricher";
+import { createPageContext, detectFlowType, inferStandardTransitions } from "./page-mapper";
+import type { PageContext } from "@/lib/schemas/journeySchema";
+import type { PageDefinition } from "@/lib/schemas/masterRuleSchema";
+import { validateSaaSFlow, type SaaSValidationResult } from "@/lib/schemas/subrulesSchema";
 
 export type ProgressCallback = (progress: CreationProgress) => void;
 
@@ -117,13 +124,15 @@ export function normalizeNodeReferences(nodes: any[]): any[] {
 }
 
 /**
- * Nova pipeline v2.0: Cria fluxo completo com a nova arquitetura
+ * Nova pipeline v3.0: Cria fluxo completo com enriquecimento SaaS
  * 
  * Fluxo:
- * 1. createMasterRule → Validação
- * 2. createJourneyAndFeatures → Validação (AGORA ANTES do Subrules)
- * 3. decomposeIntoSubrules (com journey) → Validação de grafo → Autofix se necessário
- * 4. generateFlow (100% código) → Validação final
+ * 1. createMasterRule → Validação (com pages_involved)
+ * 2. createJourneyAndFeatures → Validação (com page_key)
+ * 3. enrichFlow → Padrões SaaS (NOVO)
+ * 4. createPageContext → Mapeamento de páginas (NOVO)
+ * 5. decomposeIntoSubrules (com journey + enrichedFlow + pageContext) → Validação → Autofix
+ * 6. generateFlow (100% código) → Validação final + validações SaaS
  */
 export async function createCompleteFlowWithAgents(
   request: FullFlowCreationRequest,
@@ -131,11 +140,15 @@ export async function createCompleteFlowWithAgents(
 ): Promise<FullFlowCreationResponse> {
   const startTime = Date.now();
   const includeJourney = request.options?.include_journey !== false;
+  const includeEnrichment = (request.options as any)?.include_enrichment !== false; // NOVO v3.0
   
   let masterRuleResult: MasterRuleCreatorResponse | null = null;
   let journeyResult: JourneyFeaturesCreatorResponse | null = null;
+  let enricherResult: FlowEnricherResponse | null = null; // NOVO v3.0
+  let pageContext: PageContext | null = null; // NOVO v3.0
   let decompositionResult: SubrulesDecomposerResponse | null = null;
   let flowResult: FlowGeneratorResponse | null = null;
+  let saasValidation: SaaSValidationResult | null = null; // NOVO v3.0
   
   // Coletar warnings ao longo do processo
   const allWarnings: string[] = [];
@@ -281,7 +294,7 @@ export async function createCompleteFlowWithAgents(
       onProgress?.({
         step: "master_review",
         message: "Regra master e jornada prontas para revisão",
-        percentage: 35,
+        percentage: 30,
         details: {
           master_rule_created: true,
           master_rule_id: masterRuleResult.master_rule_id,
@@ -290,11 +303,65 @@ export async function createCompleteFlowWithAgents(
     }
 
     // ========================================
-    // ETAPA 5: Criar Subrules com {masterRule + journey}
+    // ETAPA 5: Enriquecer Fluxo com padrões SaaS (NOVO v3.0)
+    // ========================================
+    let enrichedFlow: EnrichedFlow | undefined = undefined;
+    
+    if (includeEnrichment) {
+      onProgress?.({
+        step: "linking",
+        message: "5/12 - Enriquecendo fluxo com padrões SaaS...",
+        percentage: 35,
+        details: {
+          master_rule_created: true,
+          master_rule_id: masterRuleResult.master_rule_id,
+        },
+      });
+
+      console.log("[orchestrator] Etapa 5: Enriquecendo com padrões SaaS...");
+
+      try {
+        // Extrair pages_involved da resposta da Master Rule
+        const pagesInvolved: PageDefinition[] = 
+          (masterRuleResult.master_rule as any).pages_involved || 
+          (masterRuleResult.master_rule as any).semantic_data?.pages_involved || 
+          [];
+
+        enricherResult = await enrichFlow(
+          masterRuleResult.master_rule_id,
+          request.project_id,
+          request.user_id,
+          {
+            masterRule: (masterRuleResult.master_rule as any).semantic_data,
+            journey: journeyV2,
+            journeyStructured: journeyResult?.journey_structured,
+            pagesInvolved,
+          }
+        );
+        
+        enrichedFlow = enricherResult.enriched_flow;
+        
+        console.log("[orchestrator] Enriquecimento concluído:", {
+          extra_steps: enrichedFlow?.extra_steps?.length || 0,
+          extra_decisions: enrichedFlow?.extra_decisions?.length || 0,
+          patterns_applied: enrichedFlow?.patterns_applied || [],
+        });
+        
+        if (enricherResult.validation_warnings) {
+          allWarnings.push(...enricherResult.validation_warnings);
+        }
+      } catch (enrichError) {
+        console.warn("[orchestrator] Erro ao enriquecer fluxo (continuando sem):", enrichError);
+        allWarnings.push("Enriquecimento de fluxo não foi aplicado: " + String(enrichError));
+      }
+    }
+
+    // ========================================
+    // ETAPA 6: Mapear Páginas e Transições (NOVO v3.0)
     // ========================================
     onProgress?.({
-      step: "decomposing",
-      message: "5/10 - Criando nós simbólicos (Regra + Jornada)...",
+      step: "linking",
+      message: "6/12 - Mapeando páginas e transições...",
       percentage: 40,
       details: {
         master_rule_created: true,
@@ -302,7 +369,64 @@ export async function createCompleteFlowWithAgents(
       },
     });
 
-    console.log("[orchestrator] Etapa 5: Decompondo em Subrules (com Journey)...");
+    console.log("[orchestrator] Etapa 6: Mapeando páginas...");
+
+    try {
+      const pagesInvolved: PageDefinition[] = 
+        (masterRuleResult.master_rule as any).pages_involved || 
+        (masterRuleResult.master_rule as any).semantic_data?.pages_involved || 
+        [];
+
+      pageContext = createPageContext(
+        pagesInvolved,
+        journeyResult?.journey_structured,
+        journeyV2,
+        enrichedFlow
+      );
+      
+      // Detectar tipo de fluxo e adicionar transições padrão
+      if (pageContext.pages.length > 0) {
+        const flowType = detectFlowType(pageContext.pages.map(p => p.page_key));
+        const standardTransitions = inferStandardTransitions(
+          flowType,
+          pageContext.pages.map(p => p.page_key)
+        );
+        
+        // Adicionar transições padrão que não existem
+        for (const transition of standardTransitions) {
+          const exists = pageContext.transitions.some(
+            t => t.from_page === transition.from_page && t.to_page === transition.to_page
+          );
+          if (!exists) {
+            pageContext.transitions.push(transition);
+          }
+        }
+      }
+      
+      console.log("[orchestrator] PageContext criado:", {
+        pages: pageContext.pages.length,
+        transitions: pageContext.transitions.length,
+        entry_page: pageContext.entry_page,
+      });
+    } catch (pageMapError) {
+      console.warn("[orchestrator] Erro ao mapear páginas (continuando sem):", pageMapError);
+      allWarnings.push("Mapeamento de páginas falhou: " + String(pageMapError));
+    }
+
+    // ========================================
+    // ETAPA 7: Criar Subrules com {masterRule + journey + enrichedFlow + pageContext}
+    // ========================================
+    onProgress?.({
+      step: "decomposing",
+      message: "7/12 - Criando nós ricos (RichNodes)...",
+      percentage: 50,
+      details: {
+        master_rule_created: true,
+        master_rule_id: masterRuleResult.master_rule_id,
+      },
+    });
+
+    console.log("[orchestrator] Etapa 7: Decompondo em RichNodes (com todos os contextos)...");
 
     decompositionResult = await decomposeIntoSubrules(
       masterRuleResult.master_rule_id,
@@ -310,7 +434,10 @@ export async function createCompleteFlowWithAgents(
       request.project_id,
       request.user_id,
       {
-        journey: journeyV2, // Passa a Journey para o Subrules Decomposer
+        journey: journeyV2,
+        journeyStructured: journeyResult?.journey_structured,
+        enrichedFlow,
+        pageContext,
         decompositionDepth: request.options?.decomposition_depth || "normal",
         includeErrorPaths: request.options?.include_error_paths !== false,
         includeValidationNodes: true,
@@ -318,12 +445,12 @@ export async function createCompleteFlowWithAgents(
     );
 
     // ========================================
-    // ETAPA 6: Validar Subrules (schema + regras incrementais)
+    // ETAPA 8: Validar Subrules (schema + regras incrementais + SaaS)
     // ========================================
     onProgress?.({
       step: "decomposing",
-      message: "6/10 - Validando nós simbólicos...",
-      percentage: 50,
+      message: "8/12 - Validando nós ricos...",
+      percentage: 55,
       details: {
         master_rule_created: true,
         master_rule_id: masterRuleResult.master_rule_id,
@@ -331,7 +458,7 @@ export async function createCompleteFlowWithAgents(
       },
     });
 
-    console.log("[orchestrator] Etapa 6: Validando Subrules...");
+    console.log("[orchestrator] Etapa 8: Validando Subrules...");
     
     // Validação de grafo já é feita na Edge Function
     if (!decompositionResult.success) {
@@ -351,8 +478,8 @@ export async function createCompleteFlowWithAgents(
 
     onProgress?.({
       step: "decomposing",
-      message: `${decompositionResult.sub_rules?.length || 0} nós criados (Regra + Jornada)`,
-      percentage: 55,
+      message: `${decompositionResult.sub_rules?.length || 0} nós ricos criados`,
+      percentage: 60,
       details: {
         master_rule_created: true,
         master_rule_id: masterRuleResult.master_rule_id,
@@ -361,7 +488,7 @@ export async function createCompleteFlowWithAgents(
     });
 
     // ========================================
-    // ETAPA 7: Autofix já executado na Edge Function
+    // ETAPA 9: Autofix já executado na Edge Function
     // (Se houve falha e autofix funcionou, continuamos aqui)
     // ========================================
     if (graphValidation?.warnings?.some((w: any) => 
@@ -369,8 +496,8 @@ export async function createCompleteFlowWithAgents(
     )) {
       onProgress?.({
         step: "decomposing",
-        message: "7/10 - Autofix aplicado aos nós...",
-        percentage: 60,
+        message: "9/12 - Autofix aplicado aos nós...",
+        percentage: 65,
         details: {
           master_rule_created: true,
           master_rule_id: masterRuleResult.master_rule_id,
@@ -378,16 +505,16 @@ export async function createCompleteFlowWithAgents(
         },
       });
       
-      console.log("[orchestrator] Etapa 7: Autofix foi aplicado");
+      console.log("[orchestrator] Etapa 9: Autofix foi aplicado");
       allWarnings.push("Autofix foi aplicado para corrigir erros no grafo");
     }
 
     // ========================================
-    // ETAPA 8: Gerar Fluxo Visual (100% CÓDIGO)
+    // ETAPA 10: Gerar Fluxo Visual (100% CÓDIGO)
     // ========================================
     onProgress?.({
       step: "creating_flow",
-      message: "8/10 - Gerando fluxo visual (engine)...",
+      message: "10/12 - Gerando fluxo visual (engine)...",
       percentage: 70,
       details: {
         master_rule_created: true,
@@ -396,7 +523,7 @@ export async function createCompleteFlowWithAgents(
       },
     });
 
-    console.log("[orchestrator] Etapa 8: Gerando Flow...");
+    console.log("[orchestrator] Etapa 10: Gerando Flow...");
 
     // Usar nós simbólicos diretamente da resposta (preferido) ou sub_rules como fallback
     let symbolicNodes = decompositionResult.symbolic_nodes;
@@ -457,11 +584,11 @@ export async function createCompleteFlowWithAgents(
     }
 
     // ========================================
-    // ETAPA 9: Validar Grafo Final
+    // ETAPA 11: Validar Grafo Final + Validações SaaS
     // ========================================
     onProgress?.({
       step: "creating_flow",
-      message: "9/10 - Validando grafo final...",
+      message: "11/12 - Validando grafo final e padrões SaaS...",
       percentage: 85,
       details: {
         master_rule_created: true,
@@ -472,7 +599,7 @@ export async function createCompleteFlowWithAgents(
       },
     });
 
-    console.log("[orchestrator] Etapa 9: Validando grafo final...");
+    console.log("[orchestrator] Etapa 11: Validando grafo final e SaaS...");
     
     // Adicionar warnings de validação do flow se existirem
     const flowValidation = (flowResult as any).validation;
@@ -484,15 +611,40 @@ export async function createCompleteFlowWithAgents(
     if (flowValidation?.errors?.length > 0) {
       allWarnings.push(`Validação do grafo reportou ${flowValidation.errors.length} erro(s)`);
     }
+    
+    // NOVO v3.0: Validação SaaS
+    try {
+      const richNodes = (decompositionResult as any).rich_nodes || decompositionResult.symbolic_nodes || [];
+      if (richNodes.length > 0) {
+        saasValidation = validateSaaSFlow(richNodes);
+        
+        if (saasValidation.warnings.length > 0) {
+          allWarnings.push(...saasValidation.warnings.map(w => `[SaaS] ${w.message}`));
+        }
+        
+        if (saasValidation.suggestions.length > 0) {
+          console.log("[orchestrator] Sugestões SaaS:", saasValidation.suggestions);
+        }
+        
+        console.log("[orchestrator] Validação SaaS:", {
+          isValid: saasValidation.isValid,
+          score: saasValidation.score,
+          warnings: saasValidation.warnings.length,
+          suggestions: saasValidation.suggestions.length,
+        });
+      }
+    } catch (saasValidationError) {
+      console.warn("[orchestrator] Erro na validação SaaS:", saasValidationError);
+    }
 
     // ========================================
-    // ETAPA 10: Retornar Resultado Final
+    // ETAPA 12: Retornar Resultado Final
     // ========================================
     const executionTime = Date.now() - startTime;
 
     onProgress?.({
       step: "completed",
-      message: "10/10 - Fluxo criado com sucesso!",
+      message: "12/12 - Fluxo criado com sucesso!",
       percentage: 100,
       details: {
         master_rule_created: true,
@@ -503,10 +655,12 @@ export async function createCompleteFlowWithAgents(
       },
     });
 
-    console.log("[orchestrator] Etapa 10: Concluído!", {
+    console.log("[orchestrator] Etapa 12: Concluído!", {
       execution_time_ms: executionTime,
       nodes: flowResult.generated_flow.nodes.length,
       connections: flowResult.generated_flow.connections.length,
+      pages: pageContext?.pages?.length || 0,
+      saas_score: saasValidation?.score,
       warnings: allWarnings.length,
     });
 
@@ -520,16 +674,25 @@ export async function createCompleteFlowWithAgents(
       sub_rule_ids: decompositionResult.sub_rule_ids,
       journey_id: journeyResult?.journey_id,
       flow_id: flowResult.flow_id!,
+      // NOVO v3.0
+      enricher_result: enricherResult || undefined,
+      page_context: pageContext || undefined,
+      saas_validation: saasValidation || undefined,
       summary: {
         total_rules_created: 1 + (decompositionResult.sub_rules?.length || 0),
         total_nodes_created: flowResult.generated_flow.nodes.length,
         total_connections_created: flowResult.generated_flow.connections.length,
         total_features_identified: journeyResult?.suggested_features?.length,
+        // NOVO v3.0
+        total_pages_mapped: pageContext?.pages?.length || 0,
+        total_transitions: pageContext?.transitions?.length || 0,
+        saas_score: saasValidation?.score,
+        enrichments_applied: enrichedFlow?.patterns_applied?.length || 0,
         execution_time_ms: executionTime,
         warnings: allWarnings,
       },
-      message: `Fluxo "${flowResult.generated_flow.name}" criado com ${flowResult.generated_flow.nodes.length} nós (pipeline v2.0)`,
-    };
+      message: `Fluxo "${flowResult.generated_flow.name}" criado com ${flowResult.generated_flow.nodes.length} nós e ${pageContext?.pages?.length || 0} páginas (pipeline v3.0)`,
+    } as any; // Type assertion for extended response
 
   } catch (error: any) {
     console.error("[orchestrator] Erro:", error);

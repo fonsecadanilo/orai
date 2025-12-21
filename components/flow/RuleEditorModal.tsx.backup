@@ -1,0 +1,278 @@
+"use client";
+
+import { X, Save, AlignLeft, User, Paperclip, ArrowUp, Maximize2, Minimize2, GitBranch, Box, Heading2, List, ListOrdered, Quote, Code } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { cn } from "@/lib/utils";
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+
+interface RuleEditorModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    ruleData?: { title: string; content: string; type?: string };
+    flowName?: string;
+}
+
+const OriaIcon = ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 159 154" fill="currentColor" xmlns="http://www.w3.org/2000/svg" className={className}>
+        <path d="M153.956 0C155.347 1.21634 156.744 2.65427 158.064 3.96473C154.915 6.80574 152.061 9.75254 149.034 12.7072L134.042 27.2874L85.9394 74.0466L157.904 74L157.896 79.6117H85.9097L158.009 149.686L153.961 153.639C146.169 145.787 137.721 137.841 129.749 130.09L81.8584 83.5235V126.917L76.2012 126.929L76.2026 83.5208L36.247 122.376C25.6106 132.725 14.6782 143.129 4.20743 153.595C3.83065 153.448 0.615676 150.33 0.0128418 149.788C2.02836 147.365 5.79523 144.074 8.1751 141.791L22.5183 127.874L72.1854 79.6117L0.151134 79.6021V73.9863C4.46947 74.2524 11.3198 74.0027 15.8295 74.0014L51.8034 74.048C58.2644 74.0425 65.647 73.7324 72.0354 74.129C69.8323 71.4807 66.0939 68.109 63.5375 65.638L48.9958 51.5417L0 3.96501L3.96895 0.0946732C7.13284 2.83483 10.5385 6.30095 13.5562 9.24157L28.6577 23.9441L76.2082 70.1914L76.1997 26.7873H81.8527L81.8626 70.0565C93.4536 58.9703 104.971 47.8125 116.416 36.5838C129.024 24.4816 141.538 12.2866 153.956 0Z" />
+    </svg>
+);
+
+const mentionData = {
+    nodes: [
+        { id: "trigger-1", name: "New Registration", type: "trigger" },
+        { id: "logic-1", name: "Email Validation", type: "logic" },
+        { id: "action-1", name: "Welcome Email", type: "action" },
+        { id: "action-2", name: "Show Error", type: "action" },
+    ],
+    flows: [
+        { id: "onboarding", name: "Onboarding Flow" },
+        { id: "password-reset", name: "Password Reset" },
+        { id: "checkout", name: "Checkout Process" },
+    ],
+};
+
+export function RuleEditorModal({ isOpen, onClose, ruleData, flowName = "Global Project" }: RuleEditorModalProps) {
+    const [title, setTitle] = useState("");
+    const [isVisible, setIsVisible] = useState(false);
+    const [expandProgress, setExpandProgress] = useState(0);
+
+    const [showMentionPopup, setShowMentionPopup] = useState(false);
+    const [mentionQuery, setMentionQuery] = useState("");
+    const [mentionFilter, setMentionFilter] = useState<"all" | "nodes" | "flows">("all");
+    const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
+
+    const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+    const [aiInput, setAiInput] = useState("");
+    const [messages, setMessages] = useState([
+        { role: "ai", content: "Hi! I can help you write or refine this rule. What do you need?" }
+    ]);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const editorScrollRef = useRef<HTMLDivElement>(null);
+
+    // TipTap Editor
+    const editor = useEditor({
+        extensions: [
+            StarterKit.configure({
+                heading: {
+                    levels: [2],
+                },
+            }),
+            Placeholder.configure({
+                placeholder: 'Describe the business rule logic here... Use @ to mention nodes or flows.',
+            }),
+        ],
+        content: '',
+        editorProps: {
+            attributes: {
+                class: 'prose prose-zinc max-w-none focus:outline-none min-h-[200px] text-base leading-relaxed text-zinc-600 font-serif',
+            },
+        },
+    });
+
+    useEffect(() => {
+        if (isOpen) {
+            setTitle(ruleData?.title || "");
+            if (editor && ruleData?.content) {
+                editor.commands.setContent(ruleData.content);
+            }
+            setIsVisible(true);
+            setExpandProgress(0);
+        } else {
+            setIsVisible(false);
+            setIsAiChatOpen(false);
+            setExpandProgress(0);
+        }
+    }, [isOpen, ruleData, editor]);
+
+    useEffect(() => {
+        if (isAiChatOpen) {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [messages, isAiChatOpen]);
+
+    const handleEditorScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+        const scrollTop = e.currentTarget.scrollTop;
+        const progress = Math.min(scrollTop / 100, 1);
+        setExpandProgress(progress);
+    }, []);
+
+    const filteredMentions = () => {
+        const query = mentionQuery.toLowerCase();
+        let results: { id: string; name: string; type: string; category: string }[] = [];
+        if (mentionFilter === "all" || mentionFilter === "nodes") {
+            results = results.concat(mentionData.nodes.filter(n => n.name.toLowerCase().includes(query)).map(n => ({ ...n, category: "node" })));
+        }
+        if (mentionFilter === "all" || mentionFilter === "flows") {
+            results = results.concat(mentionData.flows.filter(f => f.name.toLowerCase().includes(query)).map(f => ({ ...f, type: "flow", category: "flow" })));
+        }
+        return results.slice(0, 6);
+    };
+
+    const insertMention = (name: string) => {
+        if (editor) {
+            editor.chain().focus().insertContent(`@[${name}] `).run();
+        }
+        setShowMentionPopup(false);
+    };
+
+    const handleAiInput = () => {
+        if (textareaRef.current) {
+            textareaRef.current.style.height = "auto";
+            textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
+        }
+    };
+
+    const handleSendMessage = () => {
+        if (!aiInput.trim()) return;
+        const newMessages = [...messages, { role: "user", content: aiInput }];
+        setMessages(newMessages);
+        setAiInput("");
+        if (textareaRef.current) textareaRef.current.style.height = "auto";
+        setTimeout(() => {
+            setMessages([...newMessages, { role: "ai", content: "That sounds like a solid logic. You might want to add a check for edge cases as well." }]);
+        }, 1000);
+    };
+
+    const isFullyExpanded = expandProgress >= 1;
+    const outerPadding = 16 * (1 - expandProgress);
+    const borderRadius = 16 * (1 - expandProgress);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center transition-all duration-300" style={{ padding: outerPadding }}>
+            <div className={cn("absolute inset-0 bg-black/20 backdrop-blur-sm transition-opacity duration-300", isVisible ? "opacity-100" : "opacity-0")} onClick={onClose} />
+
+            <div
+                className={cn("relative bg-white flex flex-col transition-all duration-300 ease-out border border-zinc-100 shadow-2xl", isVisible ? "scale-100 opacity-100" : "scale-95 opacity-0")}
+                style={{ width: '100%', maxWidth: isFullyExpanded ? '100%' : '768px', height: isFullyExpanded ? '100%' : '600px', borderRadius, overflow: 'hidden' }}
+            >
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between shrink-0 bg-white z-10">
+                    <div className="flex items-center gap-2 text-zinc-500">
+                        <span className="text-xs font-medium text-zinc-400">{flowName}</span>
+                        <span className="text-zinc-300">/</span>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-zinc-600 flex items-center gap-1.5">
+                            <AlignLeft className="w-3.5 h-3.5" />
+                            Rule Editor
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => setExpandProgress(isFullyExpanded ? 0 : 1)} className="text-zinc-400 hover:text-zinc-600 p-1.5 rounded-md hover:bg-zinc-50 transition-colors" title={isFullyExpanded ? "Minimize" : "Maximize"}>
+                            {isFullyExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                        </button>
+                        <button className="text-xs font-medium text-zinc-500 hover:text-zinc-900 px-3 py-1.5 rounded-md hover:bg-zinc-50 transition-colors" onClick={onClose}>Cancel</button>
+                        <button className="flex items-center gap-1.5 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 px-3 py-1.5 rounded-md transition-colors shadow-sm" onClick={onClose}>
+                            <Save className="w-3.5 h-3.5" />
+                            Save Changes
+                        </button>
+                    </div>
+                </div>
+
+                {/* Main Content */}
+                <div className="flex-1 flex min-h-0 overflow-hidden relative">
+                    {/* Editor */}
+                    <div ref={editorScrollRef} onScroll={handleEditorScroll} className="flex-1 overflow-y-auto px-8 pt-6 pb-16">
+                        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Rule Title" className="w-full text-3xl font-bold text-zinc-900 placeholder-zinc-300 border-none focus:ring-0 focus:outline-none bg-transparent mb-4" />
+
+                        {/* TipTap Editor */}
+                        <div className="relative">
+                            {editor && <EditorContent editor={editor} />}
+                        </div>
+                    </div>
+
+                    {/* Floating Text Toolbar */}
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
+                        <div className="flex items-center gap-1 bg-white border border-zinc-200 rounded-xl shadow-lg px-2 py-1.5">
+                            <button
+                                onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
+                                className={cn("p-2 rounded-lg transition-colors", editor?.isActive('heading', { level: 2 }) ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100")}
+                                title="Heading"
+                            >
+                                <Heading2 className="w-4 h-4" />
+                            </button>
+                            <div className="w-px h-5 bg-zinc-200 mx-0.5" />
+                            <button
+                                onClick={() => editor?.chain().focus().toggleBulletList().run()}
+                                className={cn("p-2 rounded-lg transition-colors", editor?.isActive('bulletList') ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100")}
+                                title="Bullet List"
+                            >
+                                <List className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+                                className={cn("p-2 rounded-lg transition-colors", editor?.isActive('orderedList') ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100")}
+                                title="Numbered List"
+                            >
+                                <ListOrdered className="w-4 h-4" />
+                            </button>
+                            <div className="w-px h-5 bg-zinc-200 mx-0.5" />
+                            <button
+                                onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+                                className={cn("p-2 rounded-lg transition-colors", editor?.isActive('blockquote') ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100")}
+                                title="Quote"
+                            >
+                                <Quote className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
+                                className={cn("p-2 rounded-lg transition-colors", editor?.isActive('codeBlock') ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100")}
+                                title="Code Block"
+                            >
+                                <Code className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* AI Chat */}
+                    {isAiChatOpen && (
+                        <div className="w-[360px] border-l border-zinc-200 bg-zinc-50/80 flex flex-col shrink-0">
+                            <div className="px-4 py-3 border-b border-zinc-200 flex items-center justify-between bg-white">
+                                <span className="text-xs font-semibold text-zinc-800 flex items-center gap-2">
+                                    <OriaIcon className="w-4 h-4 text-zinc-900" />
+                                    Oria AI
+                                </span>
+                                <button onClick={() => setIsAiChatOpen(false)} className="text-zinc-400 hover:text-zinc-600 transition-colors p-1 hover:bg-zinc-100 rounded-md">
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                {messages.map((msg, idx) => (
+                                    <div key={idx} className={cn("flex gap-2.5", msg.role === "user" ? "flex-row-reverse" : "flex-row")}>
+                                        <div className={cn("w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 border", msg.role === "ai" ? "bg-zinc-900 border-zinc-900 text-white" : "bg-white border-zinc-200 text-zinc-600")}>
+                                            {msg.role === "ai" ? <OriaIcon className="w-3 h-3" /> : <User className="w-3.5 h-3.5" />}
+                                        </div>
+                                        <div className={cn("text-xs p-3 rounded-xl max-w-[85%] leading-relaxed", msg.role === "ai" ? "bg-white border border-zinc-200 text-zinc-600 rounded-tl-none shadow-sm" : "bg-zinc-900 text-white rounded-tr-none")}>{msg.content}</div>
+                                    </div>
+                                ))}
+                                <div ref={messagesEndRef} />
+                            </div>
+                            <div className="p-3 border-t border-zinc-200 bg-white">
+                                <div className="relative group/input">
+                                    <div className="absolute -inset-0.5 bg-gradient-to-r from-zinc-200 via-zinc-400 to-zinc-200 rounded-xl opacity-20 group-hover/input:opacity-40 blur transition duration-500" />
+                                    <div className="relative bg-white rounded-xl shadow-lg shadow-zinc-200/50 border border-zinc-200 overflow-hidden">
+                                        <textarea ref={textareaRef} value={aiInput} onChange={(e) => setAiInput(e.target.value)} onInput={handleAiInput} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} placeholder="Ask for help..." rows={1} className="w-full text-sm font-medium text-zinc-800 px-3 py-3 bg-transparent border-none focus:ring-0 focus:outline-none resize-none placeholder-zinc-400 min-h-[44px] max-h-[120px]" />
+                                        <div className="flex items-center justify-between px-2 pb-2">
+                                            <button className="text-zinc-400 hover:text-zinc-600 p-1.5 rounded-lg transition-colors hover:bg-zinc-100" title="Attach file"><Paperclip className="w-4 h-4" /></button>
+                                            <button onClick={handleSendMessage} disabled={!aiInput.trim()} className="bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white p-1.5 rounded-lg transition-colors shadow-sm"><ArrowUp className="w-4 h-4" strokeWidth={2} /></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* FAB */}
+                    {!isAiChatOpen && (
+                        <button onClick={() => setIsAiChatOpen(true)} className="absolute bottom-6 right-6 w-12 h-12 bg-zinc-900 hover:bg-zinc-800 text-white shadow-xl shadow-zinc-900/20 rounded-full flex items-center justify-center transition-all duration-300 z-10 group hover:scale-105" title="Open Oria AI">
+                            <OriaIcon className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+                        </button>
+                    )}
+                </div>
+            </div>
+            );
+}

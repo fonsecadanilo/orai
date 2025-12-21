@@ -515,111 +515,275 @@ function validateGraph(
 // ========================================
 
 Deno.serve(async (req: Request) => {
+  console.log("[flow-generator] ========== INÍCIO DA REQUISIÇÃO ==========");
+  console.log("[flow-generator] Method:", req.method);
+  console.log("[flow-generator] URL:", req.url);
+  
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
+    console.log("[flow-generator] Respondendo OPTIONS (CORS preflight)");
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Wrapper de erro global para capturar QUALQUER exceção
   try {
-    const body = await req.json();
+    return await handleRequest(req);
+  } catch (globalError) {
+    console.error("[flow-generator] ❌ ERRO GLOBAL NÃO TRATADO:", globalError);
+    console.error("[flow-generator] Stack:", (globalError as Error)?.stack || "N/A");
+    
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        message: "Erro interno não tratado: " + String(globalError),
+        error_type: (globalError as Error)?.constructor?.name || "Unknown",
+        stack: (globalError as Error)?.stack?.split("\n").slice(0, 5) || []
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
+
+// Handler principal separado para melhor tratamento de erros
+async function handleRequest(req: Request): Promise<Response> {
+  try {
+    // 1. Parse request body
+    let body;
+    try {
+      const rawBody = await req.text();
+      console.log("[flow-generator] Raw body length:", rawBody.length);
+      
+      if (!rawBody || rawBody.trim() === "") {
+        return new Response(
+          JSON.stringify({ success: false, message: "Body vazio" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      body = JSON.parse(rawBody);
+    } catch (parseError) {
+      console.error("[flow-generator] Erro ao parsear body:", parseError);
+      return new Response(
+        JSON.stringify({ success: false, message: "Body inválido: " + String(parseError) }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { master_rule_id, symbolic_nodes, project_id, user_id, layout_options } = body;
 
     console.log("[flow-generator] Recebido:", {
       master_rule_id,
       project_id,
+      user_id,
       nodes_count: symbolic_nodes?.length || 0,
+      first_node: symbolic_nodes?.[0] || null,
     });
 
-    if (!master_rule_id || !symbolic_nodes || !project_id || !user_id) {
+    // 2. Validate required fields
+    if (!master_rule_id || !project_id || !user_id) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          message: "Campos obrigatórios: master_rule_id, symbolic_nodes, project_id, user_id" 
+          message: `Campos obrigatórios faltando: ${!master_rule_id ? 'master_rule_id ' : ''}${!project_id ? 'project_id ' : ''}${!user_id ? 'user_id' : ''}`.trim()
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Buscar regra master
-    const { data: masterRule } = await supabase
-      .from("rules")
-      .select("title, description")
-      .eq("id", master_rule_id)
-      .single();
-
-    const flowName = masterRule?.title || "Fluxo sem nome";
-    const flowDescription = masterRule?.description || "";
-
-    // Configuração de layout
-    const config: LayoutConfig = { ...DEFAULT_LAYOUT_CONFIG, ...(layout_options || {}) };
-    
-    // Construir grafo
-    const { nodes, edges, nodeIdMap } = buildGraph(symbolic_nodes as SubRuleNode[], config);
-    
-    console.log("[flow-generator] Grafo construído:", {
-      nodes: nodes.length,
-      edges: edges.length,
-    });
-
-    // Validar
-    const validation = validateGraph(nodes, edges);
-
-    // Salvar flow no banco
-    const { data: savedFlow, error: flowError } = await supabase
-      .from("flows")
-      .insert({
-        project_id,
-        name: flowName,
-        description: flowDescription,
-        metadata: {
-          source: "flow-generator-v3.1",
-          validation_passed: validation.isValid,
-          validation_score: validation.score,
-        },
-      })
-      .select("id")
-      .single();
-
-    if (flowError || !savedFlow) {
-      console.error("[flow-generator] Erro ao criar flow:", flowError);
+    // 3. Validate symbolic_nodes
+    if (!symbolic_nodes || !Array.isArray(symbolic_nodes)) {
+      console.error("[flow-generator] symbolic_nodes inválido:", symbolic_nodes);
       return new Response(
-        JSON.stringify({ success: false, message: "Erro ao criar flow", details: flowError }),
+        JSON.stringify({ 
+          success: false, 
+          message: "symbolic_nodes é obrigatório e deve ser um array"
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (symbolic_nodes.length === 0) {
+      console.warn("[flow-generator] symbolic_nodes vazio, criando fluxo mínimo");
+    }
+
+    // 4. Initialize Supabase client
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error("[flow-generator] Variáveis de ambiente faltando");
+      return new Response(
+        JSON.stringify({ success: false, message: "Configuração do servidor incompleta" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Salvar nós
-    const dbNodeIdMap: Record<string, number> = {};
-    const createdNodes = [];
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    for (const node of nodes) {
-      const { data: savedNode, error: nodeError } = await supabase
-        .from("nodes")
+    // 5. Buscar regra master
+    console.log("[flow-generator] Buscando regra master:", master_rule_id);
+    
+    let flowName = "Fluxo sem nome";
+    let flowDescription = "";
+    
+    try {
+      const { data: masterRule, error: masterRuleError } = await supabase
+        .from("rules")
+        .select("title, description")
+        .eq("id", master_rule_id)
+        .single();
+
+      if (masterRuleError) {
+        console.warn("[flow-generator] Erro ao buscar regra master:", masterRuleError);
+        // Continuar mesmo sem encontrar a regra
+      } else if (masterRule) {
+        flowName = masterRule.title || "Fluxo sem nome";
+        flowDescription = masterRule.description || "";
+      }
+    } catch (masterQueryError) {
+      console.warn("[flow-generator] Exceção ao buscar regra master:", masterQueryError);
+    }
+
+    console.log("[flow-generator] Nome do fluxo:", flowName);
+
+    // 6. Configuração de layout
+    const config: LayoutConfig = { ...DEFAULT_LAYOUT_CONFIG, ...(layout_options || {}) };
+    
+    // 7. Construir grafo
+    console.log("[flow-generator] Construindo grafo com", symbolic_nodes.length, "nós...");
+    
+    let nodes: EngineNode[];
+    let edges: EngineEdge[];
+    let nodeIdMap: Map<string, string>;
+    
+    try {
+      const graphResult = buildGraph(symbolic_nodes as SubRuleNode[], config);
+      nodes = graphResult.nodes;
+      edges = graphResult.edges;
+      nodeIdMap = graphResult.nodeIdMap;
+    } catch (buildError) {
+      console.error("[flow-generator] Erro ao construir grafo:", buildError);
+      return new Response(
+        JSON.stringify({ success: false, message: "Erro ao construir grafo: " + String(buildError) }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    console.log("[flow-generator] Grafo construído:", {
+      nodes: nodes.length,
+      edges: edges.length,
+      nodeIdMap_size: nodeIdMap.size,
+    });
+
+    // 8. Validar
+    const validation = validateGraph(nodes, edges);
+    console.log("[flow-generator] Validação:", validation);
+
+    // 9. Salvar flow no banco
+    console.log("[flow-generator] Salvando flow no banco...");
+    
+    let savedFlow;
+    try {
+      const { data, error: flowError } = await supabase
+        .from("flows")
         .insert({
-          flow_id: savedFlow.id,
-          type: node.type === "text" ? "note" : node.type,
-          title: node.title,
-          description: node.description,
-          position_x: node.position_x,
-          position_y: node.position_y,
+          project_id,
+          name: flowName,
+          description: flowDescription,
           metadata: {
-            symbolic_id: node.symbolic_id,
-            order_index: node.order_index,
-            column: node.column,
-            depth: node.depth,
-            status: node.end_status,
+            source: "flow-generator-v3.1",
+            validation_passed: validation.isValid,
+            validation_score: validation.score,
           },
         })
         .select("id")
         .single();
 
-      if (!nodeError && savedNode) {
-        dbNodeIdMap[node.id] = savedNode.id;
-        createdNodes.push({ ...node, db_id: savedNode.id });
+      if (flowError) {
+        console.error("[flow-generator] Erro ao criar flow:", flowError);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            message: "Erro ao criar flow: " + (flowError.message || JSON.stringify(flowError)),
+            details: flowError 
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
+
+      if (!data) {
+        console.error("[flow-generator] Flow criado mas sem ID retornado");
+        return new Response(
+          JSON.stringify({ success: false, message: "Flow criado mas sem ID retornado" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      savedFlow = data;
+      console.log("[flow-generator] Flow criado com ID:", savedFlow.id);
+    } catch (flowSaveError) {
+      console.error("[flow-generator] Exceção ao salvar flow:", flowSaveError);
+      return new Response(
+        JSON.stringify({ success: false, message: "Exceção ao salvar flow: " + String(flowSaveError) }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 10. Salvar nós
+    console.log("[flow-generator] Salvando", nodes.length, "nós...");
+    
+    const dbNodeIdMap: Record<string, number> = {};
+    const createdNodes: Array<EngineNode & { db_id: number }> = [];
+    const failedNodes: Array<{ node: EngineNode; error: string }> = [];
+
+    for (const node of nodes) {
+      try {
+        const { data: savedNode, error: nodeError } = await supabase
+          .from("nodes")
+          .insert({
+            flow_id: savedFlow.id,
+            type: node.type === "text" ? "note" : node.type,
+            title: node.title || "Sem título",
+            description: node.description || "",
+            position_x: node.position_x || 0,
+            position_y: node.position_y || 0,
+            metadata: {
+              symbolic_id: node.symbolic_id,
+              order_index: node.order_index,
+              column: node.column,
+              depth: node.depth,
+              status: node.end_status,
+            },
+          })
+          .select("id")
+          .single();
+
+        if (nodeError) {
+          console.error(`[flow-generator] Erro ao salvar nó "${node.id}":`, nodeError);
+          failedNodes.push({ node, error: nodeError.message || String(nodeError) });
+        } else if (savedNode) {
+          dbNodeIdMap[node.id] = savedNode.id;
+          createdNodes.push({ ...node, db_id: savedNode.id });
+        }
+      } catch (nodeSaveError) {
+        console.error(`[flow-generator] Exceção ao salvar nó "${node.id}":`, nodeSaveError);
+        failedNodes.push({ node, error: String(nodeSaveError) });
+      }
+    }
+
+    console.log("[flow-generator] Nós salvos:", createdNodes.length, "/ Falhas:", failedNodes.length);
+
+    // Se nenhum nó foi salvo, retornar erro
+    if (createdNodes.length === 0 && nodes.length > 0) {
+      console.error("[flow-generator] Nenhum nó foi salvo!");
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: "Nenhum nó foi salvo no banco",
+          details: { failedNodes: failedNodes.slice(0, 5) }
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // 🔧 CORREÇÃO: Log detalhado das edges antes de salvar
@@ -643,11 +807,8 @@ Deno.serve(async (req: Request) => {
             flow_id: savedFlow.id,
             source_node_id: sourceDbId,
             target_node_id: targetDbId,
-            label: edge.label,
-            metadata: {
-              type: edge.type,
-              style: edge.style,
-            },
+            label: edge.label || null,
+            // Nota: A tabela connections não tem coluna metadata
           })
           .select("id")
           .single();
@@ -700,13 +861,18 @@ Deno.serve(async (req: Request) => {
       console.warn(`[flow-generator] ${failedConnections.length} conexões falharam ao salvar`);
     }
 
-    // Vincular flow à regra master
-    await supabase
-      .from("rules")
-      .update({ flow_id: savedFlow.id, updated_at: new Date().toISOString() })
-      .eq("id", master_rule_id);
+    // 12. Vincular flow à regra master
+    console.log("[flow-generator] Vinculando flow à regra master...");
+    try {
+      await supabase
+        .from("rules")
+        .update({ flow_id: savedFlow.id, updated_at: new Date().toISOString() })
+        .eq("id", master_rule_id);
+    } catch (linkError) {
+      console.warn("[flow-generator] Erro ao vincular flow (não crítico):", linkError);
+    }
 
-    // Estatísticas
+    // 13. Estatísticas finais
     const stats = {
       total_nodes: createdNodes.length,
       total_connections: createdConnections.length,
@@ -715,35 +881,104 @@ Deno.serve(async (req: Request) => {
       conditions: createdNodes.filter(n => n.type === "condition").length,
       ends_success: createdNodes.filter(n => n.type === "end" && n.end_status === "success").length,
       ends_error: createdNodes.filter(n => n.type === "end" && n.end_status === "error").length,
+      failed_nodes: failedNodes.length,
+      failed_connections: failedConnections.length,
     };
 
-    console.log("[flow-generator] Sucesso:", stats);
+    console.log("[flow-generator] ✅ Sucesso! Stats:", stats);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        flow_id: savedFlow.id,
-        generated_flow: {
-          id: savedFlow.id,
-          name: flowName,
-          description: flowDescription,
-          flow_master_rule_id: master_rule_id,
-          nodes: createdNodes,
-          connections: createdConnections,
-          stats,
-        },
-        linked_rules: { flow_master_rule_id: master_rule_id },
-        validation,
-        message: `Fluxo criado com ${stats.total_nodes} nós e ${stats.total_connections} conexões`,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    // Criar resposta de forma segura para evitar erros de serialização
+    const safeNodes = createdNodes.map(n => ({
+      id: n.id,
+      db_id: n.db_id,
+      type: n.type,
+      title: n.title || "",
+      description: n.description || "",
+      position_x: n.position_x || 0,
+      position_y: n.position_y || 0,
+      order_index: n.order_index,
+      column: n.column,
+      depth: n.depth,
+      end_status: n.end_status,
+      symbolic_id: n.symbolic_id,
+    }));
+
+    const safeConnections = createdConnections.map(c => ({
+      id: c.id,
+      source_id: c.source_id,
+      target_id: c.target_id,
+      source_node_id: c.source_node_id,
+      target_node_id: c.target_node_id,
+      label: c.label || null,
+      type: c.type,
+    }));
+
+    const safeValidation = {
+      isValid: validation.isValid || false,
+      score: typeof validation.score === 'number' ? validation.score : 0,
+      errors: Array.isArray(validation.errors) ? validation.errors : [],
+      warnings: Array.isArray(validation.warnings) ? validation.warnings : [],
+    };
+
+    const responseData = {
+      success: true,
+      flow_id: savedFlow.id,
+      generated_flow: {
+        id: savedFlow.id,
+        name: flowName || "Fluxo sem nome",
+        description: flowDescription || "",
+        flow_master_rule_id: master_rule_id,
+        nodes: safeNodes,
+        connections: safeConnections,
+        stats,
+      },
+      linked_rules: { flow_master_rule_id: master_rule_id },
+      validation: safeValidation,
+      warnings: [
+        ...(failedNodes.length > 0 ? [`${failedNodes.length} nós não foram salvos`] : []),
+        ...(failedConnections.length > 0 ? [`${failedConnections.length} conexões não foram salvas`] : []),
+      ],
+      message: `Fluxo criado com ${stats.total_nodes} nós e ${stats.total_connections} conexões`,
+    };
+
+    // Tentar serializar e verificar se há erros
+    let jsonResponse: string;
+    try {
+      jsonResponse = JSON.stringify(responseData);
+    } catch (serializationError) {
+      console.error("[flow-generator] Erro de serialização:", serializationError);
+      // Retornar resposta mínima se a serialização falhar
+      return new Response(
+        JSON.stringify({
+          success: true,
+          flow_id: savedFlow.id,
+          message: `Fluxo criado com ${stats.total_nodes} nós (resposta simplificada devido a erro de serialização)`,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(jsonResponse, { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
-    console.error("[flow-generator] Erro:", error);
+    console.error("[flow-generator] ❌ Erro não tratado no handleRequest:", error);
+    
+    // Tentar extrair mais informações do erro
+    let errorMessage = String(error);
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      if (error.stack) {
+        console.error("[flow-generator] Stack trace:", error.stack);
+      }
+    }
+    
     return new Response(
-      JSON.stringify({ success: false, message: String(error) }),
+      JSON.stringify({ 
+        success: false, 
+        message: "Erro interno: " + errorMessage,
+        error_type: (error as Error)?.constructor?.name || "Unknown"
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+}

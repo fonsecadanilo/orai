@@ -13,3 +13,6 @@ export function isSupabaseConfigured(): boolean {
 
 // URL base para Edge Functions
 export const SUPABASE_FUNCTIONS_URL = `${supabaseUrl}/functions/v1`;
+
+// Token para autorização nas Edge Functions
+export const SUPABASE_ANON_KEY = supabaseAnonKey;

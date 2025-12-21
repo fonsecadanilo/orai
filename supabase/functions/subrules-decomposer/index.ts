@@ -27,7 +27,41 @@ const corsHeaders = {
  * - Campo flow_category para posicionamento
  */
 
-// Schema Zod para nó simbólico
+// Schema Zod para input de formulário
+const FormInputSchema = z.object({
+  name: z.string().min(1),
+  type: z.enum(["text", "email", "password", "number", "tel", "date", "datetime", "select", "checkbox", "radio", "textarea", "file", "hidden"]).default("text"),
+  label: z.string().optional(),
+  placeholder: z.string().optional(),
+  required: z.boolean().optional().default(false),
+  validation: z.array(z.string()).optional(),
+  options: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
+});
+
+// Schema Zod para nó rico (RichNode) v3.0
+const RichNodeSchema = z.object({
+  // Campos base
+  id: z.string().min(1).regex(/^[a-z0-9_]+$/),
+  type: z.enum(["trigger", "action", "condition", "end", "subflow"]),
+  title: z.string().min(3),
+  description: z.string(),
+  next_on_success: z.string().nullable().optional(),
+  next_on_failure: z.string().nullable().optional(),
+  end_status: z.enum(["success", "error", "cancel"]).optional(),
+  flow_category: z.enum(["main", "error", "alternative"]).optional().default("main"),
+  
+  // NOVOS campos v3.0
+  page_key: z.string().optional(),
+  user_intent: z.string().optional(),
+  system_behavior: z.string().optional(),
+  ux_recommendation: z.string().optional(),
+  inputs: z.array(FormInputSchema).optional(),
+  error_cases: z.array(z.string()).optional(),
+  allows_retry: z.boolean().optional().default(false),
+  allows_cancel: z.boolean().optional().default(false),
+});
+
+// Schema básico (compatibilidade)
 const SubRuleNodeSchema = z.object({
   id: z.string().min(1).regex(/^[a-z0-9_]+$/),
   type: z.enum(["trigger", "action", "condition", "end", "subflow"]),
@@ -39,11 +73,19 @@ const SubRuleNodeSchema = z.object({
   flow_category: z.enum(["main", "error", "alternative"]).optional().default("main"),
 });
 
+// Response com RichNodes
+const RichSubrulesResponseSchema = z.object({
+  nodes: z.array(RichNodeSchema).min(3),
+});
+
+// Response básico (compatibilidade)
 const SubrulesResponseSchema = z.object({
   nodes: z.array(SubRuleNodeSchema).min(3),
 });
 
+type RichNode = z.infer<typeof RichNodeSchema>;
 type SubRuleNode = z.infer<typeof SubRuleNodeSchema>;
+type RichSubrulesResponse = z.infer<typeof RichSubrulesResponseSchema>;
 type SubrulesResponse = z.infer<typeof SubrulesResponseSchema>;
 
 // Interface para Journey v2.0
@@ -54,163 +96,231 @@ interface JourneyV2 {
   motivations: string[];
 }
 
-const SYSTEM_PROMPT = `Você é responsável por transformar REGRA DE NEGÓCIO + JORNADA DO USUÁRIO em NÓS SIMBÓLICOS para user flows.
+const SYSTEM_PROMPT = `Você é um engenheiro de automação de fluxos especializado em SaaS.
 
-## ⚠️ VOCÊ RECEBERÁ 2 DOCUMENTOS:
+## ⚠️ VOCÊ RECEBERÁ ATÉ 4 DOCUMENTOS:
 
 ### DOCUMENTO 1: REGRA DE NEGÓCIO (Master Rule)
-Fonte de verdade sobre O QUE PRECISA ACONTECER:
 - Objetivo de negócio
 - Atores envolvidos
-- Fluxo principal (lógica)
-- Fluxos alternativos
-- Fluxos de erro
+- Fluxo principal, alternativos e erros
+- PÁGINAS ENVOLVIDAS (pages_involved)
 
 ### DOCUMENTO 2: JORNADA DO USUÁRIO (Journey)
-Fonte de verdade sobre COMO O USUÁRIO EXPERIMENTA:
-- Etapas narrativas (steps)
-- Pontos de decisão (decisions)
-- Pontos de falha/abandono (failure_points)
-- Motivações do usuário (motivations)
+- Etapas narrativas com page_key
+- Pontos de decisão
+- Pontos de falha/abandono
+
+### DOCUMENTO 3: ENRIQUECIMENTOS (Flow Enricher) - OPCIONAL
+- Passos extras sugeridos
+- Decisões extras
+- Pontos de falha extras
+- Recomendações de UX
+
+### DOCUMENTO 4: CONTEXTO DE PÁGINAS (PageContext) - OPCIONAL
+- Transições entre páginas
+- Página de entrada
+- Páginas de saída
 
 ## SUA TAREFA
-Mesclar as INTENÇÕES e PASSOS NARRATIVOS da Jornada + as REGRAS TÉCNICAS da Master Rule em uma lista organizada de NÓS SIMBÓLICOS.
+Gerar uma lista de NÓS RICOS (RichNodes) que representem o fluxo completo.
 
 ## ⚠️ REGRA FUNDAMENTAL: VOCÊ NÃO DEFINE ENGINE!
 
-### VOCÊ NÃO DECIDE (PROIBIDO):
-❌ order_index (indexação numérica)
-❌ x/y (posições)
-❌ edges reais
-❌ labels de edges
-❌ layout visual
+### VOCÊ NÃO DECIDE:
+❌ order_index, x/y, edges reais, labels de edges, layout visual
 
-### VOCÊ DECIDE APENAS:
-✅ id simbólico (slug único em snake_case)
+### VOCÊ DECIDE:
+✅ id (slug único em snake_case)
 ✅ type (trigger | action | condition | end | subflow)
-✅ title (título descritivo)
-✅ description (o que acontece)
-✅ next_on_success (ID SIMBÓLICO do próximo nó ou null)
-✅ next_on_failure (ID SIMBÓLICO do próximo nó ou null - apenas para conditions)
-✅ end_status (success | error - apenas para type === "end")
+✅ title, description
+✅ next_on_success, next_on_failure (IDs SIMBÓLICOS)
+✅ end_status (success | error | cancel)
 ✅ flow_category (main | error | alternative)
 
-## 🚨 REGRAS CRÍTICAS SOBRE IDs (OBRIGATÓRIO - NUNCA VIOLAR)
+### NOVOS CAMPOS v3.0 (PREENCHER QUANDO RELEVANTE):
+✅ page_key - página onde o nó acontece
+✅ user_intent - o que o usuário quer fazer
+✅ system_behavior - o que o sistema faz
+✅ ux_recommendation - dica de UX
+✅ inputs - campos de formulário (para nós com formulários)
+✅ error_cases - erros esperados neste nó
+✅ allows_retry - se permite tentar novamente
+✅ allows_cancel - se permite cancelar
 
-1. **CADA NÓ DEVE TER UM ID SIMBÓLICO ÚNICO EM SNAKE_CASE**
-   Exemplos válidos:
-   - start_flow
-   - check_user_exists  
-   - validate_credentials
-   - redirect_to_provider
-   - handle_error_token
-   - end_success
-   - end_error_validation
+## 📋 INPUTS (PARA NÓS COM FORMULÁRIOS)
 
-2. **next_on_success e next_on_failure SEMPRE devem referenciar IDs SIMBÓLICOS**
-   ✅ CORRETO: next_on_success: "validate_credentials"
-   ✅ CORRETO: next_on_failure: "end_error_validation"
-   ❌ PROIBIDO: next_on_success: "2"
-   ❌ PROIBIDO: next_on_failure: "10"
-   ❌ PROIBIDO: next_on_success: 3
+Para nós que envolvem formulários, PREENCHA o campo "inputs":
 
-3. **NUNCA USE NÚMEROS COMO REFERÊNCIA OU ID**
-   - IDs devem ser descritivos e únicos
-   - Referências devem apontar para IDs existentes no array de nós
+{
+  "inputs": [
+    {
+      "name": "email",
+      "type": "email",
+      "label": "E-mail",
+      "required": true,
+      "validation": ["required", "valid_email"]
+    },
+    {
+      "name": "password",
+      "type": "password",
+      "label": "Senha",
+      "required": true,
+      "validation": ["required", "min_length:8"]
+    }
+  ]
+}
 
-## USE A JORNADA PARA DETECTAR:
-- Passos intermediários importantes (confirmações)
-- Condições naturais de fluxo (decisões)
-- Possíveis abandonos (failure_points → ends de erro)
-- Erros narrados na experiência
-- Loops de retentativa
+### Tipos de input:
+text, email, password, number, tel, date, select, checkbox, radio, textarea, file
 
-## FLOW_CATEGORY (CLASSIFICAÇÃO DE CAMINHOS)
-- "main": Caminho principal (happy path) - linha base
-- "error": Caminhos de erro/falha - linha inferior
-- "alternative": Caminhos alternativos (baseado em decisions) - linha superior
+### Validações comuns:
+- required
+- valid_email
+- min_length:N
+- max_length:N
+- matches:field (ex: matches:password)
+- phone
+- card_number
 
-## REGRAS OBRIGATÓRIAS
+## PADRÕES SAAS OBRIGATÓRIOS
 
-1. **EXATAMENTE 1 TRIGGER**: flow_category = "main"
-2. **PELO MENOS 1 END SUCCESS**: flow_category = "main", end_status = "success"
-3. **CONDITIONS TÊM 2 CAMINHOS**: next_on_success E next_on_failure
-4. **END NODES SÃO TERMINAIS**: NÃO têm next_*
-5. **IDS SÃO SLUGS ÚNICOS**: snake_case
-6. **SEM CICLOS INFINITOS**: Todo caminho chega a um END
-7. **FAILURE_POINTS → END ERROR**: Cada ponto de falha da jornada deve ter um end correspondente
+### 1. Fluxos de LOGIN devem ter:
+- Input de email + password
+- Condição de validação de credenciais
+- Caminho para recuperar senha
+- Destino: dashboard ou onboarding
+
+### 2. Fluxos de SIGNUP devem ter:
+- Inputs: name, email, password, password_confirm
+- Validação de campos
+- Destino: onboarding ou dashboard
+
+### 3. Fluxos de ONBOARDING devem ter:
+- Opção de pular (allows_cancel = true)
+- Múltiplos steps
+- Destino: dashboard
+
+### 4. SEMPRE incluir:
+- Tratamento de erros claros
+- Opção de retry onde fizer sentido
+- allows_cancel em operações longas
+
+## REGRAS CRÍTICAS
+
+1. **EXATAMENTE 1 TRIGGER**
+2. **PELO MENOS 1 END SUCCESS**
+3. **CONDITIONS TÊM 2 CAMINHOS**
+4. **END NODES SÃO TERMINAIS**
+5. **IDs SÃO SLUGS ÚNICOS**
+6. **SEM CICLOS INFINITOS**
+7. **TODOS OS IDs REFERENCIADOS DEVEM EXISTIR**
 
 ## FORMATO DE SAÍDA (JSON OBRIGATÓRIO)
 
 {
   "nodes": [
     {
-      "id": "start_trigger",
+      "id": "start_auth",
       "type": "trigger",
-      "title": "Início do Fluxo",
-      "description": "O usuário inicia a jornada",
-      "next_on_success": "check_something",
+      "title": "Início da Autenticação",
+      "description": "Usuário acessa a tela de autenticação",
+      "page_key": "auth",
+      "user_intent": "Acessar o sistema",
+      "system_behavior": "Exibir opções de login e cadastro",
+      "next_on_success": "choose_auth_method",
       "flow_category": "main"
     },
     {
-      "id": "check_something",
+      "id": "choose_auth_method",
       "type": "condition",
-      "title": "Verificar Algo?",
-      "description": "Verifica se a condição da regra é atendida",
-      "next_on_success": "do_action",
-      "next_on_failure": "end_error_validation",
+      "title": "Login ou Cadastro?",
+      "description": "Usuário escolhe entre fazer login ou criar conta",
+      "page_key": "auth",
+      "user_intent": "Escolher como acessar",
+      "next_on_success": "fill_login_form",
+      "next_on_failure": "fill_signup_form",
       "flow_category": "main"
     },
     {
-      "id": "do_action",
+      "id": "fill_login_form",
       "type": "action",
-      "title": "Executar Ação",
-      "description": "Sistema executa ação conforme regra de negócio",
+      "title": "Preencher Login",
+      "description": "Usuário preenche email e senha",
+      "page_key": "login",
+      "user_intent": "Entrar na conta existente",
+      "system_behavior": "Validar campos em tempo real",
+      "ux_recommendation": "Mostrar indicador de força da senha",
+      "inputs": [
+        {
+          "name": "email",
+          "type": "email",
+          "label": "E-mail",
+          "required": true,
+          "validation": ["required", "valid_email"]
+        },
+        {
+          "name": "password",
+          "type": "password",
+          "label": "Senha",
+          "required": true,
+          "validation": ["required", "min_length:6"]
+        }
+      ],
+      "error_cases": ["Email não cadastrado", "Senha incorreta", "Conta bloqueada"],
+      "allows_retry": true,
+      "next_on_success": "validate_credentials",
+      "flow_category": "main"
+    },
+    {
+      "id": "validate_credentials",
+      "type": "condition",
+      "title": "Credenciais válidas?",
+      "description": "Sistema verifica se email e senha estão corretos",
+      "page_key": "login",
+      "system_behavior": "Consultar banco de dados e validar hash",
+      "next_on_success": "redirect_dashboard",
+      "next_on_failure": "show_login_error",
+      "flow_category": "main"
+    },
+    {
+      "id": "show_login_error",
+      "type": "action",
+      "title": "Exibir Erro de Login",
+      "description": "Mostrar mensagem de erro e opção de recuperar senha",
+      "page_key": "login",
+      "system_behavior": "Exibir mensagem amigável",
+      "ux_recommendation": "Oferecer link para recuperar senha",
+      "allows_retry": true,
+      "next_on_success": "fill_login_form",
+      "flow_category": "error"
+    },
+    {
+      "id": "redirect_dashboard",
+      "type": "action",
+      "title": "Redirecionar para Dashboard",
+      "description": "Login bem-sucedido, redirecionar usuário",
+      "page_key": "dashboard",
+      "system_behavior": "Redirecionar e carregar dados do usuário",
       "next_on_success": "end_success",
       "flow_category": "main"
     },
     {
       "id": "end_success",
       "type": "end",
-      "title": "Fluxo Concluído",
-      "description": "Processo finalizado com sucesso",
+      "title": "Login Concluído",
+      "description": "Usuário autenticado com sucesso",
+      "page_key": "dashboard",
       "end_status": "success",
       "flow_category": "main"
-    },
-    {
-      "id": "end_error_validation",
-      "type": "end",
-      "title": "Erro de Validação",
-      "description": "Processo falhou (ponto de abandono identificado na jornada)",
-      "end_status": "error",
-      "flow_category": "error"
     }
   ]
 }
 
-⚠️ OBSERVE: Todas as referências (next_on_success, next_on_failure) usam IDs SIMBÓLICOS que existem no array de nós. NUNCA use números!
-
-## EXEMPLO DE MESCLA (REGRA + JORNADA)
-
-### REGRA DIZ:
-- "O sistema valida os dados antes de prosseguir"
-- "Se dados inválidos, rejeitar operação"
-
-### JORNADA DIZ:
-- Decisão: "O usuário confirma se quer continuar"
-- Falha: "O usuário pode abandonar se dados forem rejeitados"
-- Motivação: "O usuário quer ter certeza antes de confirmar"
-
-### RESULTADO:
-{
-  "id": "validate_data",
-  "type": "condition",
-  "title": "Dados válidos?",
-  "description": "Sistema valida dados conforme regra. Usuário aguarda confirmação.",
-  "next_on_success": "proceed_action",
-  "next_on_failure": "end_invalid_data",
-  "flow_category": "main"
-}
+⚠️ NUNCA use números como IDs ou referências!
+✅ SEMPRE preencha page_key quando souber a página
+✅ SEMPRE preencha inputs para nós com formulários
+✅ Use error_cases para listar erros esperados
 
 RETORNE APENAS JSON VÁLIDO, sem markdown ou explicações.`;
 
@@ -540,23 +650,91 @@ RETORNE APENAS O JSON CORRIGIDO com { "nodes": [...] }`;
 }
 
 Deno.serve(async (req: Request) => {
+  // #region agent log
+  const initLog = JSON.stringify({location:'subrules-decomposer/index.ts:652',message:'Edge function iniciada',data:{method:req.method,url:req.url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'});
+  await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', initLog + '\n', { append: true }).catch((e) => console.error('Erro ao escrever log:', e));
+  // #endregion
+  
+  console.log("[subrules-decomposer] ========== INÍCIO DA REQUISIÇÃO ==========");
+  console.log("[subrules-decomposer] Method:", req.method);
+  
   if (req.method === "OPTIONS") {
+    console.log("[subrules-decomposer] Respondendo OPTIONS (CORS)");
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
+    // Parse JSON com logging
+    let body;
+    try {
+      const rawBody = await req.text();
+      console.log("[subrules-decomposer] Raw body length:", rawBody.length);
+      
+      if (!rawBody || rawBody.trim() === "") {
+        // #region agent log
+        const emptyBodyLog = JSON.stringify({location:'subrules-decomposer/index.ts:668',message:'Body vazio - retornando 400',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
+        await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', emptyBodyLog + '\n', { append: true }).catch(() => {});
+        // #endregion
+        console.error("[subrules-decomposer] Body vazio!");
+        return new Response(
+          JSON.stringify({ success: false, message: "Body vazio" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      body = JSON.parse(rawBody);
+    } catch (parseError) {
+      // #region agent log
+      const parseErrorLog = JSON.stringify({location:'subrules-decomposer/index.ts:677',message:'Erro ao parsear body - retornando 400',data:{error:String(parseError)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
+      await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', parseErrorLog + '\n', { append: true }).catch(() => {});
+      // #endregion
+      console.error("[subrules-decomposer] Erro ao parsear body:", parseError);
+      return new Response(
+        JSON.stringify({ success: false, message: "Body inválido: " + String(parseError) }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { 
       master_rule_id, 
       journey,
+      journey_structured,
+      enriched_flow,
+      page_context,
       project_id, 
-      user_id 
-    } = await req.json();
+      user_id,
+      master_rule_content
+    } = body;
+
+    // #region agent log
+    const logData = JSON.stringify({location:'subrules-decomposer/index.ts:693',message:'Parâmetros recebidos no edge function',data:{master_rule_id:master_rule_id,project_id:project_id,user_id:user_id,has_master_rule_content:!!master_rule_content,master_rule_content_keys:master_rule_content?Object.keys(master_rule_content):null,has_journey:!!journey,has_journey_structured:!!journey_structured,has_enriched_flow:!!enriched_flow,has_page_context:!!page_context},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'});
+    await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', logData + '\n', { append: true }).catch(() => {});
+    // #endregion
+
+    console.log("[subrules-decomposer] Parâmetros recebidos:", {
+      master_rule_id: master_rule_id,
+      project_id: project_id,
+      user_id: user_id,
+      has_journey: !!journey,
+      has_journey_structured: !!journey_structured,
+      has_enriched_flow: !!enriched_flow,
+      has_page_context: !!page_context,
+    });
 
     if (!master_rule_id || !project_id || !user_id) {
+      // #region agent log
+      const errorLog = JSON.stringify({location:'subrules-decomposer/index.ts:711',message:'Campos obrigatórios faltando',data:{master_rule_id:!master_rule_id?'FALTANDO':'OK',project_id:!project_id?'FALTANDO':'OK',user_id:!user_id?'FALTANDO':'OK'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
+      await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', errorLog + '\n', { append: true }).catch(() => {});
+      // #endregion
+      console.error("[subrules-decomposer] Campos obrigatórios faltando:", {
+        master_rule_id: !master_rule_id ? "FALTANDO" : "OK",
+        project_id: !project_id ? "FALTANDO" : "OK",
+        user_id: !user_id ? "FALTANDO" : "OK",
+      });
       return new Response(
         JSON.stringify({ 
           success: false, 
-          message: "Campos obrigatórios faltando: master_rule_id, project_id, user_id" 
+          message: `Campos obrigatórios faltando: ${!master_rule_id ? 'master_rule_id ' : ''}${!project_id ? 'project_id ' : ''}${!user_id ? 'user_id' : ''}`.trim()
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -570,13 +748,22 @@ Deno.serve(async (req: Request) => {
     const openai = new OpenAI({ apiKey: openaiKey });
 
     // Buscar regra master
-    const { data: masterRule } = await supabase
+    const { data: masterRule, error: masterRuleError } = await supabase
       .from("rules")
       .select("*")
       .eq("id", master_rule_id)
       .single();
 
+    // #region agent log
+    const masterRuleLog = JSON.stringify({location:'subrules-decomposer/index.ts:733',message:'Resultado da busca da master rule',data:{master_rule_id:master_rule_id,has_master_rule:!!masterRule,has_error:!!masterRuleError,error_message:masterRuleError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'});
+    await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', masterRuleLog + '\n', { append: true }).catch(() => {});
+    // #endregion
+
     if (!masterRule) {
+      // #region agent log
+      const notFoundLog = JSON.stringify({location:'subrules-decomposer/index.ts:737',message:'Master rule não encontrada',data:{master_rule_id:master_rule_id,error:masterRuleError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'});
+      await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', notFoundLog + '\n', { append: true }).catch(() => {});
+      // #endregion
       return new Response(
         JSON.stringify({ success: false, message: "Regra master não encontrada" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -643,16 +830,48 @@ Deno.serve(async (req: Request) => {
     // Construir contexto da Journey
     let journeyContext = `## DOCUMENTO 2: JORNADA DO USUÁRIO\n\n`;
     
-    if (journeyData) {
+    // Usar journey_structured se disponível
+    const structuredJourney = journey_structured || journeyData?.metadata?.journey_structured;
+    
+    if (structuredJourney) {
+      journeyContext += "**Etapas Narrativas (com página):**\n";
+      structuredJourney.steps?.forEach((step: any, i: number) => {
+        journeyContext += `${i + 1}. [${step.page_key || '?'}] ${step.description}`;
+        if (step.step_id) journeyContext += ` (id: ${step.step_id})`;
+        if (step.user_intent) journeyContext += `\n   → Intenção: ${step.user_intent}`;
+        journeyContext += "\n";
+      });
+      journeyContext += "\n";
+      
+      if (structuredJourney.decisions?.length > 0) {
+        journeyContext += "**Pontos de Decisão:**\n";
+        structuredJourney.decisions.forEach((decision: any) => {
+          journeyContext += `- [${decision.page_key || '?'}] ${decision.description}`;
+          if (decision.options?.length) journeyContext += ` (opções: ${decision.options.join(', ')})`;
+          journeyContext += "\n";
+        });
+        journeyContext += "\n";
+      }
+      
+      if (structuredJourney.failure_points?.length > 0) {
+        journeyContext += "**Pontos de Falha/Abandono:**\n";
+        structuredJourney.failure_points.forEach((failure: any) => {
+          journeyContext += `- [${failure.page_key || '?'}] ${failure.description}`;
+          if (failure.recovery) journeyContext += ` → Recuperação: ${failure.recovery}`;
+          journeyContext += "\n";
+        });
+        journeyContext += "\n";
+      }
+    } else if (journeyData) {
       journeyContext += "**Etapas Narrativas (steps):**\n";
-      journeyData.steps.forEach((step, i) => {
+      journeyData.steps.forEach((step: string, i: number) => {
         journeyContext += `${i + 1}. ${step}\n`;
       });
       journeyContext += "\n";
       
       if (journeyData.decisions?.length > 0) {
         journeyContext += "**Pontos de Decisão (decisions):**\n";
-        journeyData.decisions.forEach((decision) => {
+        journeyData.decisions.forEach((decision: string) => {
           journeyContext += `- ${decision}\n`;
         });
         journeyContext += "\n";
@@ -660,7 +879,7 @@ Deno.serve(async (req: Request) => {
       
       if (journeyData.failure_points?.length > 0) {
         journeyContext += "**Pontos de Falha/Abandono (failure_points):**\n";
-        journeyData.failure_points.forEach((failure) => {
+        journeyData.failure_points.forEach((failure: string) => {
           journeyContext += `- ${failure}\n`;
         });
         journeyContext += "\n";
@@ -668,7 +887,7 @@ Deno.serve(async (req: Request) => {
       
       if (journeyData.motivations?.length > 0) {
         journeyContext += "**Motivações do Usuário (motivations):**\n";
-        journeyData.motivations.forEach((motivation) => {
+        journeyData.motivations.forEach((motivation: string) => {
           journeyContext += `- ${motivation}\n`;
         });
         journeyContext += "\n";
@@ -676,21 +895,120 @@ Deno.serve(async (req: Request) => {
     } else {
       journeyContext += "*Jornada não fornecida. Criar nós baseado apenas na Regra de Negócio.*\n\n";
     }
+    
+    // NOVO v3.0: Construir contexto do Flow Enricher
+    let enricherContext = "";
+    if (enriched_flow) {
+      enricherContext = `## DOCUMENTO 3: ENRIQUECIMENTOS (Flow Enricher)\n\n`;
+      
+      if (enriched_flow.extra_steps?.length > 0) {
+        enricherContext += "**Passos Extras Sugeridos:**\n";
+        enriched_flow.extra_steps.forEach((step: any) => {
+          enricherContext += `- [${step.page_key || '?'}] ${step.description}`;
+          enricherContext += ` (${step.pattern_type || 'other'})`;
+          if (step.reason) enricherContext += ` → ${step.reason}`;
+          enricherContext += "\n";
+        });
+        enricherContext += "\n";
+      }
+      
+      if (enriched_flow.extra_decisions?.length > 0) {
+        enricherContext += "**Decisões Extras Sugeridas:**\n";
+        enriched_flow.extra_decisions.forEach((decision: any) => {
+          enricherContext += `- [${decision.page_key || '?'}] ${decision.description}`;
+          if (decision.options?.length) enricherContext += ` (opções: ${decision.options.join(', ')})`;
+          enricherContext += "\n";
+        });
+        enricherContext += "\n";
+      }
+      
+      if (enriched_flow.extra_failure_points?.length > 0) {
+        enricherContext += "**Pontos de Falha Extras:**\n";
+        enriched_flow.extra_failure_points.forEach((failure: any) => {
+          enricherContext += `- [${failure.page_key || '?'}] ${failure.description}`;
+          if (failure.allows_retry) enricherContext += " (permite retry)";
+          enricherContext += "\n";
+        });
+        enricherContext += "\n";
+      }
+      
+      if (enriched_flow.ux_recommendations?.length > 0) {
+        enricherContext += "**Recomendações de UX:**\n";
+        enriched_flow.ux_recommendations.forEach((rec: any) => {
+          enricherContext += `- ${rec.target}: ${rec.recommendation}`;
+          if (rec.pattern_name) enricherContext += ` [${rec.pattern_name}]`;
+          enricherContext += "\n";
+        });
+        enricherContext += "\n";
+      }
+    }
+    
+    // NOVO v3.0: Construir contexto do PageContext
+    let pageContextText = "";
+    if (page_context) {
+      pageContextText = `## DOCUMENTO 4: CONTEXTO DE PÁGINAS\n\n`;
+      
+      if (page_context.pages?.length > 0) {
+        pageContextText += "**Páginas Disponíveis:**\n";
+        page_context.pages.forEach((page: any) => {
+          pageContextText += `- ${page.page_key}: ${page.label}`;
+          if (page.page_type) pageContextText += ` (${page.page_type})`;
+          pageContextText += "\n";
+        });
+        pageContextText += "\n";
+      }
+      
+      if (page_context.transitions?.length > 0) {
+        pageContextText += "**Transições de Página:**\n";
+        page_context.transitions.forEach((t: any) => {
+          pageContextText += `- ${t.from_page} → ${t.to_page}`;
+          if (t.reason) pageContextText += ` (${t.reason})`;
+          if (t.is_error_path) pageContextText += " [ERRO]";
+          pageContextText += "\n";
+        });
+        pageContextText += "\n";
+      }
+      
+      if (page_context.entry_page) {
+        pageContextText += `**Página de Entrada:** ${page_context.entry_page}\n`;
+      }
+      if (page_context.exit_pages_success?.length > 0) {
+        pageContextText += `**Páginas de Saída (Sucesso):** ${page_context.exit_pages_success.join(', ')}\n`;
+      }
+      if (page_context.exit_pages_error?.length > 0) {
+        pageContextText += `**Páginas de Saída (Erro):** ${page_context.exit_pages_error.join(', ')}\n`;
+      }
+    }
 
-    const userMessage = `Transforme os 2 documentos abaixo em NÓS SIMBÓLICOS para um user flow:
+    const userMessage = `Transforme os documentos abaixo em NÓS RICOS (RichNodes) para um user flow:
 
 ${masterRuleContext}
 ${journeyContext}
+${enricherContext}
+${pageContextText}
 
 ## INSTRUÇÕES
 
 1. Use a REGRA como fonte de verdade sobre O QUE acontece
-2. Use a JORNADA para entender COMO o usuário experimenta
-3. Cada DECISÃO da jornada pode virar uma CONDITION
-4. Cada PONTO DE FALHA pode virar um END ERROR
-5. Mesclhe as informações em nós coerentes
-6. Garanta: 1 trigger, ≥1 end success, conditions com 2 caminhos
-7. Use flow_category para classificar cada nó (main, error, alternative)
+2. Use a JORNADA para entender COMO o usuário experimenta E em qual PÁGINA
+3. Use os ENRIQUECIMENTOS para adicionar padrões SaaS recomendados
+4. Use o CONTEXTO DE PÁGINAS para garantir transições corretas
+5. Cada DECISÃO da jornada pode virar uma CONDITION
+6. Cada PONTO DE FALHA pode virar um END ERROR ou um nó com allows_retry
+7. Garanta: 1 trigger, ≥1 end success, conditions com 2 caminhos
+8. Use flow_category para classificar cada nó (main, error, alternative)
+
+## CAMPOS OBRIGATÓRIOS v3.0
+
+Para CADA nó, preencha:
+- id, type, title, description (sempre)
+- next_on_success, next_on_failure (quando aplicável)
+- page_key (SEMPRE que souber a página)
+- inputs (para nós com formulários - LOGIN, SIGNUP, etc.)
+- user_intent (o que o usuário quer)
+- system_behavior (o que o sistema faz)
+- error_cases (erros esperados)
+- allows_retry (true se pode tentar de novo)
 
 RETORNE APENAS JSON VÁLIDO com { "nodes": [...] }`;
 
@@ -730,33 +1048,59 @@ RETORNE APENAS JSON VÁLIDO com { "nodes": [...] }`;
 
     // 🔧 CORREÇÃO: Garantir IDs simbólicos válidos e corrigir referências numéricas
     if (parsedResponse && typeof parsedResponse === 'object' && 'nodes' in parsedResponse) {
-      const rawNodes = (parsedResponse as { nodes: SubRuleNode[] }).nodes;
+      const rawNodes = (parsedResponse as { nodes: RichNode[] }).nodes;
       console.log("[subrules-decomposer] Verificando e corrigindo IDs simbólicos...");
       const correctedNodes = ensureSymbolicIds(rawNodes);
-      (parsedResponse as { nodes: SubRuleNode[] }).nodes = correctedNodes;
-      console.log("[subrules-decomposer] IDs corrigidos:", correctedNodes.map(n => ({ id: n.id, next: n.next_on_success })));
+      (parsedResponse as { nodes: RichNode[] }).nodes = correctedNodes;
+      console.log("[subrules-decomposer] IDs corrigidos:", correctedNodes.map(n => ({ id: n.id, next: n.next_on_success, page_key: n.page_key })));
     }
 
-    // Validar com Zod
-    let validationResult = SubrulesResponseSchema.safeParse(parsedResponse);
+    // Tentar validar como RichNodes primeiro (v3.0)
+    let richValidationResult = RichSubrulesResponseSchema.safeParse(parsedResponse);
+    let isRichResponse = richValidationResult.success;
+    let subrulesResponse: SubrulesResponse | RichSubrulesResponse;
     
-    if (!validationResult.success) {
-      const errors = validationResult.error.errors.map(
-        (e) => `${e.path.join(".")}: ${e.message}`
-      );
+    // #region agent log
+    const validationLog = JSON.stringify({location:'subrules-decomposer/index.ts:1027',message:'Início da validação Zod',data:{rich_validation_success:richValidationResult.success,rich_validation_errors:richValidationResult.success?null:richValidationResult.error.errors.map((e:any)=>`${e.path.join(".")}: ${e.message}`)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'});
+    await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', validationLog + '\n', { append: true }).catch(() => {});
+    // #endregion
+    
+    if (richValidationResult.success) {
+      subrulesResponse = richValidationResult.data;
+      console.log("[subrules-decomposer] Validado como RichNodes v3.0");
+    } else {
+      // Fallback para validação básica
+      const basicValidationResult = SubrulesResponseSchema.safeParse(parsedResponse);
       
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: "Validação Zod falhou",
-          validation_errors: errors,
-          raw_response: parsedResponse
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      // #region agent log
+      const basicValidationLog = JSON.stringify({location:'subrules-decomposer/index.ts:1036',message:'Validação básica Zod',data:{basic_validation_success:basicValidationResult.success,basic_validation_errors:basicValidationResult.success?null:basicValidationResult.error.errors.map((e:any)=>`${e.path.join(".")}: ${e.message}`)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'});
+      await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', basicValidationLog + '\n', { append: true }).catch(() => {});
+      // #endregion
+      
+      if (!basicValidationResult.success) {
+        const errors = basicValidationResult.error.errors.map(
+          (e) => `${e.path.join(".")}: ${e.message}`
+        );
+        
+        // #region agent log
+        const zodErrorLog = JSON.stringify({location:'subrules-decomposer/index.ts:1043',message:'Validação Zod falhou - retornando 400',data:{errors:errors},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'});
+        await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', zodErrorLog + '\n', { append: true }).catch(() => {});
+        // #endregion
+        
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            message: "Validação Zod falhou",
+            validation_errors: errors,
+            raw_response: parsedResponse
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      subrulesResponse = basicValidationResult.data;
+      console.log("[subrules-decomposer] Validado como SubRuleNodes básicos");
     }
-
-    let subrulesResponse: SubrulesResponse = validationResult.data;
 
     // Mini-validador incremental
     let graphValidation = validateGraphIncremental(subrulesResponse.nodes);
@@ -818,6 +1162,10 @@ RETORNE APENAS JSON VÁLIDO com { "nodes": [...] }`;
 
     // Se ainda não está válido após autofix, retornar erro
     if (!graphValidation.isValid) {
+      // #region agent log
+      const graphErrorLog = JSON.stringify({location:'subrules-decomposer/index.ts:1117',message:'Validação de grafo falhou após autofix - retornando 400',data:{errors:graphValidation.errors.map((e:any)=>e.message),warnings:graphValidation.warnings.map((w:any)=>w.message),nodes_count:subrulesResponse.nodes.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'});
+      await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', graphErrorLog + '\n', { append: true }).catch(() => {});
+      // #endregion
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -833,12 +1181,23 @@ RETORNE APENAS JSON VÁLIDO com { "nodes": [...] }`;
     // Salvar subrules no banco
     const savedSubRules = [];
     for (const node of subrulesResponse.nodes) {
+      // Extrair campos RichNode se disponíveis
+      const richNode = node as RichNode;
+      
+      // Construir conteúdo markdown rico
+      let content = `# ${node.title}\n\n${node.description}`;
+      if (richNode.page_key) content += `\n\n**Página:** ${richNode.page_key}`;
+      if (richNode.user_intent) content += `\n**Intenção do Usuário:** ${richNode.user_intent}`;
+      if (richNode.system_behavior) content += `\n**Comportamento do Sistema:** ${richNode.system_behavior}`;
+      if (richNode.ux_recommendation) content += `\n**Recomendação UX:** ${richNode.ux_recommendation}`;
+      if (richNode.error_cases?.length) content += `\n**Erros Esperados:** ${richNode.error_cases.join(', ')}`;
+      
       const { data: saved, error } = await supabase
         .from("rules")
         .insert({
           title: node.title,
           description: node.description,
-          content: `# ${node.title}\n\n${node.description}`,
+          content,
           rule_type: "node_rule",
           scope: "node",
           parent_rule_id: master_rule_id,
@@ -847,13 +1206,27 @@ RETORNE APENAS JSON VÁLIDO com { "nodes": [...] }`;
           status: "active",
           priority: node.type === "end" && node.end_status === "error" ? "high" : "medium",
           metadata: {
+            // Campos básicos
             symbolic_id: node.id,
             next_on_success: node.next_on_success,
             next_on_failure: node.next_on_failure,
             end_status: node.end_status,
             flow_category: node.flow_category || "main",
-            source: "subrules-decomposer-v2",
+            // NOVOS campos v3.0
+            page_key: richNode.page_key,
+            user_intent: richNode.user_intent,
+            system_behavior: richNode.system_behavior,
+            ux_recommendation: richNode.ux_recommendation,
+            inputs: richNode.inputs,
+            error_cases: richNode.error_cases,
+            allows_retry: richNode.allows_retry,
+            allows_cancel: richNode.allows_cancel,
+            // Metadados
+            source: "subrules-decomposer-v3",
+            is_rich_node: isRichResponse,
             has_journey_context: !!journeyData,
+            has_enricher_context: !!enriched_flow,
+            has_page_context: !!page_context,
           },
         })
         .select("*")
@@ -882,7 +1255,8 @@ RETORNE APENAS JSON VÁLIDO com { "nodes": [...] }`;
       })
       .eq("id", master_rule_id);
 
-    // Estatísticas
+    // Estatísticas v3.0
+    const richNodes = subrulesResponse.nodes as RichNode[];
     const stats = {
       total: savedSubRules.length,
       triggers: subrulesResponse.nodes.filter(n => n.type === "trigger").length,
@@ -894,6 +1268,13 @@ RETORNE APENAS JSON VÁLIDO com { "nodes": [...] }`;
       main_path: subrulesResponse.nodes.filter(n => n.flow_category === "main").length,
       error_path: subrulesResponse.nodes.filter(n => n.flow_category === "error").length,
       alternative_path: subrulesResponse.nodes.filter(n => n.flow_category === "alternative").length,
+      // NOVOS stats v3.0
+      nodes_with_page: richNodes.filter(n => n.page_key).length,
+      nodes_with_inputs: richNodes.filter(n => n.inputs?.length).length,
+      total_inputs: richNodes.reduce((sum, n) => sum + (n.inputs?.length || 0), 0),
+      nodes_with_ux_recommendation: richNodes.filter(n => n.ux_recommendation).length,
+      nodes_allowing_retry: richNodes.filter(n => n.allows_retry).length,
+      unique_pages: [...new Set(richNodes.map(n => n.page_key).filter(Boolean))],
     };
 
     return new Response(
@@ -903,15 +1284,28 @@ RETORNE APENAS JSON VÁLIDO com { "nodes": [...] }`;
         sub_rules: savedSubRules,
         sub_rule_ids: savedSubRules.map(s => s.db_id),
         symbolic_nodes: subrulesResponse.nodes,
+        // NOVO v3.0
+        rich_nodes: isRichResponse ? subrulesResponse.nodes : null,
         stats,
         graph_validation: graphValidation,
-        has_journey_context: !!journeyData,
-        message: `${savedSubRules.length} nós simbólicos criados (com contexto de jornada: ${!!journeyData})`,
+        // Contextos utilizados
+        context_info: {
+          has_journey: !!journeyData,
+          has_journey_structured: !!structuredJourney,
+          has_enricher: !!enriched_flow,
+          has_page_context: !!page_context,
+          is_rich_response: isRichResponse,
+        },
+        message: `${savedSubRules.length} nós ${isRichResponse ? 'ricos' : 'simbólicos'} criados (páginas: ${stats.unique_pages.length}, inputs: ${stats.total_inputs})`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
+    // #region agent log
+    const errorLog = JSON.stringify({location:'subrules-decomposer/index.ts:1253',message:'Erro não tratado na edge function',data:{error_message:String(error),error_name:error?.name,error_stack:error?.stack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'});
+    await Deno.writeTextFile('/Users/danilofonseca/Desktop/oria-app/.cursor/debug.log', errorLog + '\n', { append: true }).catch(() => {});
+    // #endregion
     console.error("Erro:", error);
     return new Response(
       JSON.stringify({ success: false, message: String(error) }),

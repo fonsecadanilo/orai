@@ -1,7 +1,12 @@
 import { Handle, Position } from "reactflow";
 import { Zap } from "lucide-react";
+import type { TriggerNodeData } from "@/types/flow-nodes";
 
-export function TriggerNode({ data }: { data: { label: string; description?: string } }) {
+interface TriggerNodeProps {
+    data: Omit<TriggerNodeData, 'id' | 'type'>;
+}
+
+export function TriggerNode({ data }: TriggerNodeProps) {
     return (
         <div className="bg-card rounded-xl shadow-sm border border-border p-4 transition-shadow hover:shadow-md relative w-[200px] group">
             {/* Handles - All directions for flexible connections */}
