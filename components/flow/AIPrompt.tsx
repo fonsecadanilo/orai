@@ -26,18 +26,18 @@ interface AIPromptProps {
 // Step-by-step progress component for v3.1 pipeline (6 agents)
 function CreationSteps({ progress }: { progress: CreationProgress }) {
     const steps = [
-        { 
-            key: "creating_master", 
+        {
+            key: "creating_master",
             label: "Mapping product context",
             number: 1,
         },
-        { 
-            key: "decomposing", 
+        {
+            key: "decomposing",
             label: "Synthesizing & validating",
             number: 2,
         },
-        { 
-            key: "creating_flow", 
+        {
+            key: "creating_flow",
             label: "Composing visual flow",
             number: 3,
             alternativeKeys: ["linking"],
@@ -65,12 +65,12 @@ function CreationSteps({ progress }: { progress: CreationProgress }) {
                     const isActive = step.key === progress.step || step.alternativeKeys?.includes(progress.step);
                     const isStepCompleted = currentIndex > index || isCompleted;
                     const isPending = currentIndex < index && !isCompleted;
-                    
+
                     return (
                         <div key={step.key} className="flex items-center flex-1">
                             {/* Step indicator */}
                             <div className="flex items-center gap-2 flex-1">
-                                <div 
+                                <div
                                     className={cn(
                                         "flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-semibold transition-all duration-500",
                                         isActive && !isError && "bg-primary text-primary-foreground scale-110",
@@ -85,8 +85,8 @@ function CreationSteps({ progress }: { progress: CreationProgress }) {
                                         <span>{step.number}</span>
                                     )}
                                 </div>
-                                
-                                <span 
+
+                                <span
                                     className={cn(
                                         "text-[11px] font-medium transition-all duration-300 whitespace-nowrap",
                                         isActive && !isError && "text-primary",
@@ -143,10 +143,10 @@ function CreationSteps({ progress }: { progress: CreationProgress }) {
     );
 }
 
-export function AIPrompt({ 
-    activeTool, 
-    onToolSelect, 
-    selectedNodeType, 
+export function AIPrompt({
+    activeTool,
+    onToolSelect,
+    selectedNodeType,
     onNodeTypeSelect,
     onFlowGenerated,
     onRulesCreated,
@@ -163,9 +163,9 @@ export function AIPrompt({
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Flow creation hook - v3.1 pipeline (6 agents)
-    const { 
-        createCompleteFlow, 
-        isLoading: isLoadingFlow, 
+    const {
+        createCompleteFlow,
+        isLoading: isLoadingFlow,
         progress,
         error: flowError,
         generatedFlow: flowFromHook,
@@ -184,7 +184,7 @@ export function AIPrompt({
             console.error("❌ Error:", err.message);
         }
     });
-    
+
     // When generatedFlow changes (v3.1), notify FlowEditor
     useEffect(() => {
         if (flowFromHook && onFlowGenerated) {
@@ -193,8 +193,8 @@ export function AIPrompt({
     }, [flowFromHook, onFlowGenerated]);
 
     // Hook for creating rules only
-    const { 
-        createRules, 
+    const {
+        createRules,
         isLoading: isLoadingRules,
         error: rulesError,
     } = useBusinessRules({
@@ -244,7 +244,7 @@ export function AIPrompt({
     // Submit prompt to agent
     const handleSubmit = useCallback(async () => {
         if (!promptValue.trim() || isLoading) return;
-        
+
         if (agentType === "build") {
             // Builder v3.1: 6-agent pipeline (Oria v3.1 methodology)
             console.log("🚀 Starting v3.1 pipeline with 6 agents...");
@@ -298,7 +298,7 @@ export function AIPrompt({
                 {/* Glow Effect */}
                 <div className={cn(
                     "absolute -inset-0.5 rounded-2xl blur transition duration-500",
-                    showProgress 
+                    showProgress
                         ? "bg-gradient-to-r from-primary/40 via-primary/20 to-primary/40 opacity-60"
                         : "bg-gradient-to-r from-border via-border to-border opacity-20 group-hover:opacity-40"
                 )}></div>
@@ -344,14 +344,19 @@ export function AIPrompt({
                             onKeyDown={handleKeyDown}
                             placeholder={isLoading ? "Creating your flow..." : getPlaceholder()}
                             className={cn(
-                                "border-none focus:ring-0 focus:outline-none placeholder-muted-foreground transition-all resize-none overflow-hidden min-h-[2.5rem] text-sm font-medium bg-transparent w-full pr-3 pl-3 py-3",
-                                isLoading 
-                                    ? "text-muted-foreground cursor-not-allowed opacity-60" 
+                                "!border-none !ring-0 !focus:ring-0 !focus:outline-none !outline-none placeholder-muted-foreground transition-all resize-none overflow-hidden min-h-[2.5rem] text-sm font-medium bg-transparent w-full pr-3 pl-3 py-3 !shadow-none",
+                                isLoading
+                                    ? "text-muted-foreground cursor-not-allowed opacity-60"
                                     : "text-card-foreground"
                             )}
                             rows={1}
                             onInput={handleInput}
                             disabled={isLoading}
+                            style={{
+                                outline: 'none',
+                                border: 'none',
+                                boxShadow: 'none'
+                            }}
                         ></textarea>
                     </div>
 
@@ -368,7 +373,7 @@ export function AIPrompt({
                                 disabled={isLoading}
                                 className={cn(
                                     "flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md transition-colors cursor-pointer group/selector",
-                                    isLoading 
+                                    isLoading
                                         ? "bg-muted/50 text-muted-foreground cursor-not-allowed"
                                         : "bg-muted hover:bg-muted/80 text-muted-foreground"
                                 )}
@@ -457,7 +462,7 @@ export function AIPrompt({
                                 <Paperclip className="w-4 h-4" />
                             </button>
                             <div className="h-4 w-[1px] bg-border mx-1"></div>
-                            <button 
+                            <button
                                 onClick={handleSubmit}
                                 disabled={isLoading || !promptValue.trim()}
                                 className={cn(
@@ -488,19 +493,19 @@ export function AIPrompt({
             {/* Suggestions */}
             {!isLoading && context && (
                 <div className="flex justify-center gap-2 mt-3 flex-wrap">
-                    <button 
+                    <button
                         onClick={() => setPromptValue("Create login flow with email validation and two-factor authentication")}
                         className="text-[10px] font-medium text-muted-foreground bg-card/80 backdrop-blur border border-border px-3 py-1.5 rounded-full hover:border-border hover:text-foreground transition-all shadow-sm cursor-pointer"
                     >
                         + Login with 2FA
                     </button>
-                    <button 
+                    <button
                         onClick={() => setPromptValue("Create complete registration flow with data validation and email confirmation")}
                         className="text-[10px] font-medium text-muted-foreground bg-card/80 backdrop-blur border border-border px-3 py-1.5 rounded-full hover:border-border hover:text-foreground transition-all shadow-sm cursor-pointer"
                     >
                         + Complete signup
                     </button>
-                    <button 
+                    <button
                         onClick={() => setPromptValue("Create password recovery flow with email reset link")}
                         className="text-[10px] font-medium text-muted-foreground bg-card/80 backdrop-blur border border-border px-3 py-1.5 rounded-full hover:border-border hover:text-foreground transition-all shadow-sm cursor-pointer"
                     >

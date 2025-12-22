@@ -62,7 +62,7 @@ Isso garante **consistência** e **previsibilidade** nos resultados.
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         ORQUESTRADOR                                     │
-│              (Coordena todos os agentes em sequência)                   │
+│              (Coordena todos os agentes em sequência) Agente Orai                  │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
             ┌───────────────────────┼───────────────────────┐
