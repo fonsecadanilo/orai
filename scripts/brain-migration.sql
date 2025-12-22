@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS brain_canvas_blocks (
   content TEXT DEFAULT '',
   mode TEXT,
   model TEXT,
+  plan_id UUID,  -- Referência ao plano de flow associado
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -67,7 +68,47 @@ CREATE INDEX IF NOT EXISTS idx_brain_canvas_blocks_thread ON brain_canvas_blocks
 CREATE INDEX IF NOT EXISTS idx_brain_canvas_blocks_project ON brain_canvas_blocks(project_id);
 
 -- ============================================
--- 4. BRAIN MIGRATIONS (para tracking de migrations sugeridas)
+-- 4. BRAIN FLOW PLANS
+-- ============================================
+CREATE TABLE IF NOT EXISTS brain_flow_plans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id INTEGER NOT NULL,
+  thread_id UUID REFERENCES brain_threads(id) ON DELETE SET NULL,
+  canvas_block_id UUID,
+  flow_key TEXT,
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'revised', 'approved', 'building', 'built', 'cancelled')),
+  plan_version INTEGER DEFAULT 1,
+  plan_md TEXT NOT NULL,
+  plan_json JSONB NOT NULL,
+  approved_at TIMESTAMPTZ,
+  approved_by TEXT,
+  build_job_id UUID,
+  result_flow_id INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_brain_flow_plans_project ON brain_flow_plans(project_id);
+CREATE INDEX IF NOT EXISTS idx_brain_flow_plans_status ON brain_flow_plans(status);
+CREATE INDEX IF NOT EXISTS idx_brain_flow_plans_canvas_block ON brain_flow_plans(canvas_block_id);
+
+-- ============================================
+-- 5. BRAIN FLOW PLAN VERSIONS (histórico)
+-- ============================================
+CREATE TABLE IF NOT EXISTS brain_flow_plan_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  plan_id UUID REFERENCES brain_flow_plans(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  plan_md TEXT NOT NULL,
+  plan_json JSONB NOT NULL,
+  change_summary TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_brain_flow_plan_versions_plan ON brain_flow_plan_versions(plan_id);
+
+-- ============================================
+-- 6. BRAIN MIGRATIONS (para tracking de migrations sugeridas)
 -- ============================================
 CREATE TABLE IF NOT EXISTS brain_migrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -85,7 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_brain_migrations_project ON brain_migrations(proj
 CREATE INDEX IF NOT EXISTS idx_brain_migrations_status ON brain_migrations(status);
 
 -- ============================================
--- 5. PRODUCT PROFILES (se não existir)
+-- 7. PRODUCT PROFILES (se não existir)
 -- ============================================
 CREATE TABLE IF NOT EXISTS product_profiles (
   id SERIAL PRIMARY KEY,
@@ -105,7 +146,7 @@ CREATE TABLE IF NOT EXISTS product_profiles (
 CREATE INDEX IF NOT EXISTS idx_product_profiles_project ON product_profiles(project_id);
 
 -- ============================================
--- 6. PERSONAS (se não existir)
+-- 8. PERSONAS (se não existir)
 -- ============================================
 CREATE TABLE IF NOT EXISTS personas (
   id SERIAL PRIMARY KEY,
@@ -124,7 +165,7 @@ CREATE TABLE IF NOT EXISTS personas (
 CREATE INDEX IF NOT EXISTS idx_personas_project ON personas(project_id);
 
 -- ============================================
--- 7. BUSINESS RULES (se não existir)
+-- 9. BUSINESS RULES (se não existir)
 -- ============================================
 CREATE TABLE IF NOT EXISTS business_rules (
   id SERIAL PRIMARY KEY,
@@ -144,7 +185,7 @@ CREATE INDEX IF NOT EXISTS idx_business_rules_project ON business_rules(project_
 CREATE INDEX IF NOT EXISTS idx_business_rules_status ON business_rules(status);
 
 -- ============================================
--- 8. FLOW REGISTRY (se não existir)
+-- 10. FLOW REGISTRY (se não existir)
 -- ============================================
 CREATE TABLE IF NOT EXISTS flow_registry (
   id SERIAL PRIMARY KEY,
@@ -163,7 +204,7 @@ CREATE TABLE IF NOT EXISTS flow_registry (
 CREATE INDEX IF NOT EXISTS idx_flow_registry_project ON flow_registry(project_id);
 
 -- ============================================
--- 9. FLOW SPECS (se não existir)
+-- 11. FLOW SPECS (se não existir)
 -- ============================================
 CREATE TABLE IF NOT EXISTS flow_specs (
   id SERIAL PRIMARY KEY,
@@ -181,7 +222,7 @@ CREATE INDEX IF NOT EXISTS idx_flow_specs_flow ON flow_specs(flow_id);
 CREATE INDEX IF NOT EXISTS idx_flow_specs_latest ON flow_specs(is_latest);
 
 -- ============================================
--- 10. FLOWS (se não existir)
+-- 12. FLOWS (se não existir)
 -- ============================================
 CREATE TABLE IF NOT EXISTS flows (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -203,6 +244,8 @@ CREATE INDEX IF NOT EXISTS idx_flows_project ON flows(project_id);
 ALTER TABLE brain_threads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE brain_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE brain_canvas_blocks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE brain_flow_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE brain_flow_plan_versions ENABLE ROW LEVEL SECURITY;
 
 -- Policies permissivas para service role (Edge Functions)
 -- Em produção, adicionar policies mais restritivas baseadas em auth.uid()
@@ -225,6 +268,18 @@ TO service_role
 USING (true)
 WITH CHECK (true);
 
+CREATE POLICY "Service role full access on brain_flow_plans"
+ON brain_flow_plans FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Service role full access on brain_flow_plan_versions"
+ON brain_flow_plan_versions FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
 -- ============================================
 -- REALTIME (para streaming updates)
 -- ============================================
@@ -238,6 +293,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE brain_canvas_blocks;
 -- - brain_threads: Threads de conversa do Brain
 -- - brain_messages: Mensagens das conversas
 -- - brain_canvas_blocks: Blocos do Brain no canvas
+-- - brain_flow_plans: Planos de flow gerados pelo Brain
+-- - brain_flow_plan_versions: Histórico de versões dos planos
 -- - brain_migrations: Migrations sugeridas pelo Brain
 -- - product_profiles: Perfil do produto
 -- - personas: Personas/roles do projeto
@@ -245,5 +302,13 @@ ALTER PUBLICATION supabase_realtime ADD TABLE brain_canvas_blocks;
 -- - flow_registry: Registry de fluxos
 -- - flow_specs: Especificações de fluxos
 -- - flows: Fluxos do projeto
+--
+-- Para ativar as Edge Functions do Brain:
+-- 1. Configure OPENAI_API_KEY no Supabase secrets:
+--    supabase secrets set OPENAI_API_KEY=sk-...
+-- 2. Deploy as funções:
+--    supabase functions deploy
+
+
 
 

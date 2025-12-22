@@ -53,3 +53,5 @@ console.log(`\n✨ SQL gerado para ${uxBlocks.length} blocos`);
 
 
 
+
+
