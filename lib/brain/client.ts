@@ -5,7 +5,13 @@
  * Suporta streaming via Server-Sent Events (SSE).
  */
 
-import { SUPABASE_FUNCTIONS_URL } from "@/lib/supabase/client";
+import { SUPABASE_FUNCTIONS_URL, SUPABASE_ANON_KEY } from "@/lib/supabase/client";
+
+// Headers padrão para todas as requisições
+const defaultHeaders = {
+  "Content-Type": "application/json",
+  "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+};
 import type {
   BrainThread,
   BrainMessage,
@@ -54,7 +60,7 @@ export async function createThread(
   const response = await fetch(`${baseUrl}/brain-thread-create`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      ...defaultHeaders,
       ...options?.headers,
     },
     body: JSON.stringify(request),
@@ -80,7 +86,7 @@ export async function getThread(
   const response = await fetch(`${baseUrl}/brain-thread-get`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      ...defaultHeaders,
       ...options?.headers,
     },
     body: JSON.stringify(request),
@@ -106,7 +112,7 @@ export async function sendMessage(
   const response = await fetch(`${baseUrl}/brain-message-send`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      ...defaultHeaders,
       ...options?.headers,
     },
     body: JSON.stringify(request),
@@ -146,7 +152,7 @@ export async function* sendMessageStreaming(
   const response = await fetch(`${baseUrl}/brain-message-send`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      ...defaultHeaders,
       ...options?.headers,
     },
     body: JSON.stringify(request),
@@ -227,7 +233,7 @@ export async function applyActions(
   const response = await fetch(`${baseUrl}/brain-actions-apply`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      ...defaultHeaders,
       ...options?.headers,
     },
     body: JSON.stringify(request),
