@@ -95,29 +95,29 @@ handleBrainBlockCreate: (data) => {
 
 ---
 
-## ❌ GAPS IDENTIFICADOS
+## ✅ GAPS CORRIGIDOS (22 Dez 2025)
 
-### P0 - Críticos
+### P0 - Críticos ✅
 
-| Gap | Descrição | Impacto |
-|-----|-----------|---------|
-| **canvas_edges** | Tabela NÃO EXISTE | Conexões Brain↔Brain↔Flow não persistem |
-| **RLS** | brain_* tables sem RLS | Segurança comprometida |
-| **BrainChatNode handles** | Só tem top/bottom | Não permite conexões laterais (brain links) |
+| Gap | Status | Solução |
+|-----|--------|---------|
+| **canvas_edges** | ✅ CORRIGIDO | Tabela criada com suporte a 6 edge_types |
+| **RLS** | ✅ CORRIGIDO | Todas as tabelas brain_* e editor têm RLS |
+| **BrainChatNode handles** | ✅ CORRIGIDO | Adicionados handles laterais (in_ref/out_ref) |
 
-### P1 - Importantes
+### P1 - Importantes ✅
 
-| Gap | Descrição | Impacto |
-|-----|-----------|---------|
-| Toggle "Show Brain Links" | Não existe | UX - não dá pra esconder links |
-| Rate limiting | Não implementado | Custos podem escalar |
-| Membership validation | Parcial | Alguns endpoints não validam |
+| Gap | Status | Solução |
+|-----|--------|---------|
+| Toggle "Show Brain Links" | ✅ CORRIGIDO | Botão no FlowEditor |
+| Rate limiting | ⏳ PENDENTE | A implementar |
+| Membership validation | ⏳ PARCIAL | Alguns endpoints validam |
 
 ### P2 - Nice to Have
 
 | Gap | Descrição |
 |-----|-----------|
-| Realtime subscriptions | brain_canvas_blocks tem, mas pode melhorar |
+| Realtime subscriptions | brain_canvas_blocks e canvas_edges têm realtime |
 | Auto-fix branching | Stats registrados mas UI não mostra |
 
 ---
