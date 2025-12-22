@@ -13,13 +13,13 @@
  * - Ações de Review/Approve/Build
  */
 
-import { memo, useEffect, useState, useCallback } from "react";
-import { Handle, Position, type NodeProps } from "reactflow";
-import { 
-  Brain, 
-  Sparkles, 
-  Zap, 
-  Clock, 
+import { memo, useEffect, useState, useCallback, useRef } from "react";
+import { Handle, Position, NodeResizer, type NodeProps } from "reactflow";
+import {
+  Brain,
+  Sparkles,
+  Zap,
+  Clock,
   MessageSquare,
   FileText,
   Play,
@@ -32,12 +32,15 @@ import {
   ChevronDown,
   History,
   ExternalLink,
+  PanelRightOpen,
+  Paperclip,
+  ArrowUp,
 } from "lucide-react";
 import { supabase, SUPABASE_FUNCTIONS_URL, SUPABASE_ANON_KEY } from "@/lib/supabase/client";
-import type { 
-  BrainMode, 
-  BrainModel, 
-  BrainFlowPlan, 
+import type {
+  BrainMode,
+  BrainModel,
+  BrainFlowPlan,
   BrainFlowPlanStatus,
   BrainMessage,
 } from "@/lib/brain/types";
@@ -59,15 +62,15 @@ export interface BrainChatNodeData {
   user_id?: number;
 }
 
-type TabType = "chat" | "plan" | "actions";
+type ViewType = "chat" | "plan";
 
 // ========================================
 // MODE CONFIG
 // ========================================
 
-const MODE_CONFIG: Record<BrainMode, { 
-  label: string; 
-  icon: typeof Brain; 
+const MODE_CONFIG: Record<BrainMode, {
+  label: string;
+  icon: typeof Brain;
   color: string;
   bgColor: string;
 }> = {
@@ -116,7 +119,8 @@ const STATUS_CONFIG: Record<BrainFlowPlanStatus, {
 // ========================================
 
 function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>) {
-  const [activeTab, setActiveTab] = useState<TabType>("chat");
+  const [currentView, setCurrentView] = useState<ViewType>("chat");
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [content, setContent] = useState(data.content || "");
   const [isStreaming, setIsStreaming] = useState(data.streaming || false);
   const [messages, setMessages] = useState<BrainMessage[]>([]);
@@ -126,6 +130,8 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
   const [inputValue, setInputValue] = useState("");
   const [revisionInput, setRevisionInput] = useState("");
   const [showRevisionInput, setShowRevisionInput] = useState(false);
+
+
 
   const modeConfig = data.mode ? MODE_CONFIG[data.mode] : MODE_CONFIG.CONSULT;
   const ModeIcon = modeConfig.icon;
@@ -140,7 +146,7 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
         .select("*")
         .eq("thread_id", data.thread_id)
         .order("created_at", { ascending: true });
-      
+
       if (msgs) setMessages(msgs as BrainMessage[]);
     }
 
@@ -159,7 +165,7 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
           .select("*")
           .eq("canvas_block_id", data.id)
           .maybeSingle();
-        
+
         if (planError) {
           console.warn("Could not load plan:", planError.message);
           return;
@@ -240,11 +246,23 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
     setInputValue("");
     setIsLoading(true);
 
+    // Optimistic update
+    const tempMessage: BrainMessage = {
+      id: `temp-${Date.now()}`,
+      thread_id: data.thread_id,
+      role: "user",
+      content: prompt,
+      created_at: new Date().toISOString(),
+      project_id: data.project_id || 1,
+      metadata: {} as any,
+    };
+    setMessages((prev) => [...prev, tempMessage]);
+
     try {
       // Chamar Edge Function brain-message-send
       const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/brain-message-send`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
         },
@@ -256,26 +274,24 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Brain message send failed:", errorText);
         throw new Error("Failed to send message");
       }
 
-      const result = await response.json();
-      console.log("💬 Brain response:", result);
+      await response.json(); // Wait for completion
 
-      // Recarregar mensagens
+      // Recarregar mensagens (substitui a temporária pela real)
       const { data: msgs } = await supabase
         .from("brain_messages")
         .select("*")
         .eq("thread_id", data.thread_id)
         .order("created_at", { ascending: true });
-      
+
       if (msgs) setMessages(msgs as BrainMessage[]);
 
-      console.log("💬 Message sent successfully!");
     } catch (error) {
       console.error("Error sending message:", error);
+      // Remove optimistic message if failed? Or show error state.
+      // For now keeping it simple.
     } finally {
       setIsLoading(false);
     }
@@ -293,7 +309,7 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
     try {
       const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/brain-message-send`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
         },
@@ -314,7 +330,7 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
         .select("*")
         .eq("thread_id", data.thread_id)
         .order("created_at", { ascending: true });
-      
+
       if (msgs) setMessages(msgs as BrainMessage[]);
 
       console.log("💬 Revision request sent!");
@@ -338,7 +354,7 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
     try {
       const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/brain-plan-approve-build`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
         },
@@ -350,7 +366,7 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         setPlan(result.plan);
         alert("Plan approved and build initiated! 🚀");
@@ -377,7 +393,7 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
         .from("brain_flow_plans")
         .update({ status: "cancelled", updated_at: new Date().toISOString() })
         .eq("id", plan.id);
-      
+
       setPlan(prev => prev ? { ...prev, status: "cancelled" } : null);
     } catch (error) {
       console.error("Error cancelling:", error);
@@ -386,44 +402,56 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
     }
   }, [plan, isLoading]);
 
+
+
   return (
     <div
       className={`
-        relative min-w-[400px] max-w-[550px] rounded-xl border-2 shadow-lg
-        transition-all duration-200
-        ${selected 
-          ? "border-violet-500 shadow-violet-500/20" 
-          : "border-gray-200 dark:border-gray-700"
+        relative min-w-[300px] min-h-[250px] w-full h-full rounded-xl border-2 shadow-sm
+        transition-all duration-200 flex flex-col nowheel
+        ${selected
+          ? "border-primary shadow-md"
+          : "border-border"
         }
-        bg-white dark:bg-gray-900
+        bg-card
       `}
     >
-      {/* Handle de entrada (top) - para conexões de flow */}
+      <NodeResizer
+        minWidth={300}
+        minHeight={250}
+        maxWidth={1200}
+        maxHeight={900}
+        isVisible={selected}
+        lineClassName="border-primary"
+        handleClassName="h-3 w-3 bg-primary border-2 border-background rounded"
+      />
+
       <Handle
         type="target"
         position={Position.Top}
         id="top"
-        className="!w-3 !h-3 !bg-violet-500 !border-2 !border-white"
+        className="!w-3 !h-3 !bg-primary !border-2 !border-background"
       />
-      
+
       {/* Handle lateral esquerdo (entrada de referência) - para brain links */}
       <Handle
         type="target"
         position={Position.Left}
         id="in_ref"
-        className="!w-2.5 !h-2.5 !bg-blue-500 !border-2 !border-white !top-1/2 !-translate-y-1/2"
+        className="!w-2.5 !h-2.5 !bg-primary !border-2 !border-background !top-1/2 !-translate-y-1/2"
         style={{ left: -6 }}
       />
 
       {/* Header */}
       <div className={`
         flex items-center justify-between px-4 py-2 rounded-t-lg
-        border-b border-gray-100 dark:border-gray-800
-        ${modeConfig.bgColor}
+        border-b border-border
+        bg-muted/40
+        cursor-grab active:cursor-grabbing
       `}>
         <div className="flex items-center gap-2">
-          <Brain className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-          <span className="font-semibold text-sm text-gray-800 dark:text-gray-200">
+          <Brain className="w-4 h-4 text-primary" />
+          <span className="font-semibold text-sm text-foreground">
             Brain
           </span>
         </div>
@@ -452,35 +480,23 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500" />
             </span>
           )}
+
+          {/* Sheet Toggle Button */}
+          <button
+            onClick={() => setIsSheetOpen(!isSheetOpen)}
+            className="p-1.5 rounded-lg hover:bg-muted 
+              text-muted-foreground transition-colors cursor-pointer"
+            title={currentView === "chat" ? "Ver Plan" : "Ver Chat"}
+          >
+            <PanelRightOpen className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-100 dark:border-gray-800">
-        <TabButton 
-          active={activeTab === "chat"} 
-          onClick={() => setActiveTab("chat")}
-          icon={MessageSquare}
-          label="Chat"
-        />
-        <TabButton 
-          active={activeTab === "plan"} 
-          onClick={() => setActiveTab("plan")}
-          icon={FileText}
-          label="Plan"
-          badge={plan ? `v${plan.plan_version}` : undefined}
-        />
-        <TabButton 
-          active={activeTab === "actions"} 
-          onClick={() => setActiveTab("actions")}
-          icon={Play}
-          label="Actions"
-        />
-      </div>
 
       {/* Content */}
-      <div className="h-[350px] overflow-hidden flex flex-col">
-        {activeTab === "chat" && (
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col nodrag cursor-default">
+        {currentView === "chat" && (
           <ChatTab
             messages={messages}
             isStreaming={isStreaming}
@@ -491,17 +507,11 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
             isLoading={isLoading}
           />
         )}
-        
-        {activeTab === "plan" && (
-          <PlanTab
+
+        {currentView === "plan" && (
+          <PlanTabWithActions
             plan={plan}
             versions={versions}
-          />
-        )}
-        
-        {activeTab === "actions" && (
-          <ActionsTab
-            plan={plan}
             isLoading={isLoading}
             showRevisionInput={showRevisionInput}
             revisionInput={revisionInput}
@@ -514,65 +524,85 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
         )}
       </div>
 
-      {/* Handle de saída (bottom) - para conexões de flow */}
+      {/* Sheet Component */}
+      {isSheetOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/20 z-40"
+            onClick={() => setIsSheetOpen(false)}
+          />
+
+          {/* Sheet Panel */}
+          <div className="fixed right-0 top-0 bottom-0 w-[400px] bg-card 
+            shadow-2xl z-50 border-l border-border 
+            flex flex-col animate-in slide-in-from-right duration-200">
+
+            {/* Sheet Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <h3 className="font-semibold text-foreground">
+                {currentView === "chat" ? "Plan" : "Chat"}
+              </h3>
+              <button
+                onClick={() => setIsSheetOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-muted 
+                  text-muted-foreground transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Sheet Content */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {currentView === "chat" ? (
+                <PlanTabWithActions
+                  plan={plan}
+                  versions={versions}
+                  isLoading={isLoading}
+                  showRevisionInput={showRevisionInput}
+                  revisionInput={revisionInput}
+                  setShowRevisionInput={setShowRevisionInput}
+                  setRevisionInput={setRevisionInput}
+                  onRequestChanges={handleRequestChanges}
+                  onApproveAndBuild={handleApproveAndBuild}
+                  onCancel={handleCancel}
+                />
+              ) : (
+                <ChatTab
+                  messages={messages}
+                  isStreaming={isStreaming}
+                  streamingContent={content}
+                  inputValue={inputValue}
+                  setInputValue={setInputValue}
+                  onSend={handleSendMessage}
+                  isLoading={isLoading}
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+
       <Handle
         type="source"
         position={Position.Bottom}
         id="bottom"
-        className="!w-3 !h-3 !bg-violet-500 !border-2 !border-white"
+        className="!w-3 !h-3 !bg-primary !border-2 !border-background"
       />
-      
+
       {/* Handle lateral direito (saída de referência) - para brain links */}
       <Handle
         type="source"
         position={Position.Right}
         id="out_ref"
-        className="!w-2.5 !h-2.5 !bg-blue-500 !border-2 !border-white !top-1/2 !-translate-y-1/2"
+        className="!w-2.5 !h-2.5 !bg-primary !border-2 !border-background !top-1/2 !-translate-y-1/2"
         style={{ right: -6 }}
       />
     </div>
   );
 }
 
-// ========================================
-// TAB COMPONENTS
-// ========================================
-
-function TabButton({ 
-  active, 
-  onClick, 
-  icon: Icon, 
-  label, 
-  badge 
-}: { 
-  active: boolean; 
-  onClick: () => void; 
-  icon: typeof MessageSquare;
-  label: string;
-  badge?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`
-        flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium
-        transition-colors border-b-2 -mb-[2px]
-        ${active 
-          ? "text-violet-600 border-violet-600 bg-violet-50 dark:bg-violet-950/30" 
-          : "text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
-        }
-      `}
-    >
-      <Icon className="w-4 h-4" />
-      {label}
-      {badge && (
-        <span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/50 text-violet-600">
-          {badge}
-        </span>
-      )}
-    </button>
-  );
-}
 
 function StatusBadge({ status, version }: { status: BrainFlowPlanStatus; version: number }) {
   const config = STATUS_CONFIG[status];
@@ -585,6 +615,62 @@ function StatusBadge({ status, version }: { status: BrainFlowPlanStatus; version
     `}>
       <Icon className={`w-3 h-3 ${status === "building" ? "animate-spin" : ""}`} />
       {config.label}
+    </div>
+  );
+}
+
+function StreamingTypewriter({ content }: { content: string }) {
+  const [displayedContent, setDisplayedContent] = useState("");
+  const currentLengthRef = useRef(0);
+
+  useEffect(() => {
+    // If no content handling (reset or waiting)
+    if (!content) {
+      setDisplayedContent("");
+      currentLengthRef.current = 0;
+      return;
+    }
+
+    // If new content is shorter (restart), reset
+    if (content.length < currentLengthRef.current) {
+      setDisplayedContent("");
+      currentLengthRef.current = 0;
+    }
+
+    const interval = setInterval(() => {
+      setDisplayedContent((prev) => {
+        if (prev.length < content.length) {
+          currentLengthRef.current = prev.length + 1;
+          return prev + content[prev.length];
+        }
+        return prev;
+      });
+    }, 20); // Faster typing speed (20ms) is smoother
+
+    return () => clearInterval(interval);
+  }, [content]); // Depend only on content changes (which happens when new chunks arrive)
+
+  // Initial "Thinking..." state
+  if (!content) {
+    return (
+      <div className="flex justify-start animate-in fade-in duration-300">
+        <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-muted text-foreground flex items-center gap-2">
+          <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+          <span className="text-muted-foreground italic text-xs">Thinking...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-muted text-foreground">
+        <div className="whitespace-pre-wrap break-words">
+          {displayedContent}
+          {/* Only show cursor if typing isn't finished or if streaming is active */}
+          <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-middle" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -606,49 +692,135 @@ function ChatTab({
   onSend: () => void;
   isLoading: boolean;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      // Reset height to auto to get the correct scrollHeight
+      textarea.style.height = 'auto';
+      // Set height based on scrollHeight, with min and max constraints
+      const newHeight = Math.min(Math.max(textarea.scrollHeight, 48), 120);
+      textarea.style.height = `${newHeight}px`;
+    }
+  }, [inputValue]);
+
+  // Auto-scroll to bottom
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, streamingContent, isStreaming]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter without Shift sends the message
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onSend();
+    }
+    // Shift+Enter creates a new line (default behavior)
+  };
+
+  // Track new assistant message for animation
+  const [animatingMessageId, setAnimatingMessageId] = useState<string | null>(null);
+  const prevMessagesRef = useRef<BrainMessage[]>([]);
+
+  useEffect(() => {
+    // Detect if a new assistant message was added
+    if (messages.length > prevMessagesRef.current.length) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage && lastMessage.role === "assistant") {
+        setAnimatingMessageId(lastMessage.id);
+      }
+    }
+    prevMessagesRef.current = messages;
+  }, [messages]);
+
   return (
     <>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {messages.length === 0 && !isStreaming && (
+        {messages.length === 0 && !isLoading && (
           <div className="flex items-center justify-center h-full text-gray-400 text-sm">
             Comece uma conversa...
           </div>
         )}
 
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+          msg.id === animatingMessageId ? (
+            <TypewriterMessageBubble
+              key={msg.id}
+              message={msg}
+              onComplete={() => setAnimatingMessageId(null)}
+            />
+          ) : (
+            <MessageBubble key={msg.id} message={msg} />
+          )
         ))}
 
-        {isStreaming && streamingContent && (
-          <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-            <div className="text-sm whitespace-pre-wrap">{streamingContent}</div>
-            <span className="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5" />
+        {/* Thinking state - shown when loading and no message being animated */}
+        {isLoading && !animatingMessageId && (
+          <div className="flex justify-start animate-in fade-in duration-300">
+            <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-muted text-foreground flex items-center gap-2">
+              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+              <span className="text-muted-foreground italic text-xs">Thinking...</span>
+            </div>
           </div>
         )}
+
+        <div ref={messagesEndRef} />
       </div>
 
-      <div className="p-3 border-t border-gray-100 dark:border-gray-800">
-        <div className="flex gap-2">
-          <input
-            type="text"
+      <div className="p-3">
+        <div className="relative flex items-center gap-2 px-3 py-2 rounded-xl border border-border/40 shadow-sm
+          bg-background focus-within:border-primary/50 transition-colors outline-none">
+          <textarea
+            ref={textareaRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && onSend()}
+            onKeyDown={handleKeyDown}
             placeholder="Pergunte ao Brain..."
             disabled={isLoading}
-            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 
-              bg-gray-50 dark:bg-gray-800 text-sm
-              focus:outline-none focus:ring-2 focus:ring-violet-500
-              disabled:opacity-50"
+            rows={1}
+            className="flex-1 bg-transparent text-sm resize-none overflow-hidden
+              focus:outline-none text-foreground
+              placeholder-muted-foreground
+              disabled:opacity-50 !border-none !focus:ring-0 !ring-0 !outline-none !shadow-none"
+            style={{
+              minHeight: '24px',
+              maxHeight: '120px',
+              outline: 'none',
+              border: 'none',
+              boxShadow: 'none'
+            }}
           />
-          <button
-            onClick={onSend}
-            disabled={!inputValue.trim() || isLoading}
-            className="p-2 rounded-lg bg-violet-600 text-white disabled:bg-gray-300 
-              hover:bg-violet-700 transition-colors"
-          >
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </button>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 
+                transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+              title="Anexar arquivo"
+            >
+              <Paperclip className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={onSend}
+              disabled={!inputValue.trim() || isLoading}
+              className="p-2 rounded-lg bg-primary text-primary-foreground disabled:bg-muted 
+                disabled:text-muted-foreground hover:bg-primary/90 transition-colors 
+                disabled:cursor-not-allowed"
+              title="Enviar mensagem"
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <ArrowUp className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </>
@@ -662,9 +834,9 @@ function MessageBubble({ message }: { message: BrainMessage }) {
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div className={`
         max-w-[85%] rounded-lg px-3 py-2 text-sm
-        ${isUser 
-          ? "bg-violet-600 text-white" 
-          : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+        ${isUser
+          ? "bg-primary text-primary-foreground"
+          : "bg-muted text-foreground"
         }
       `}>
         <div className="whitespace-pre-wrap break-words">{message.content}</div>
@@ -673,14 +845,79 @@ function MessageBubble({ message }: { message: BrainMessage }) {
   );
 }
 
-function PlanTab({
+// Typewriter effect for new assistant messages
+function TypewriterMessageBubble({
+  message,
+  onComplete
+}: {
+  message: BrainMessage;
+  onComplete: () => void;
+}) {
+  const [displayedContent, setDisplayedContent] = useState("");
+  const content = message.content;
+
+  useEffect(() => {
+    if (!content) return;
+
+    let currentIndex = 0;
+    const interval = setInterval(() => {
+      if (currentIndex < content.length) {
+        setDisplayedContent(content.slice(0, currentIndex + 1));
+        currentIndex++;
+      } else {
+        clearInterval(interval);
+        onComplete();
+      }
+    }, 15); // 15ms per character for smooth fast typing
+
+    return () => clearInterval(interval);
+  }, [content, onComplete]);
+
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-muted text-foreground">
+        <div className="whitespace-pre-wrap break-words">
+          {displayedContent}
+          {displayedContent.length < content.length && (
+            <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-middle" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Combined Plan + Actions Component
+function PlanTabWithActions({
   plan,
   versions,
+  isLoading,
+  showRevisionInput,
+  revisionInput,
+  setShowRevisionInput,
+  setRevisionInput,
+  onRequestChanges,
+  onApproveAndBuild,
+  onCancel,
 }: {
   plan: BrainFlowPlan | null;
   versions: { version: number; created_at: string; change_summary?: string }[];
+  isLoading: boolean;
+  showRevisionInput: boolean;
+  revisionInput: string;
+  setShowRevisionInput: (v: boolean) => void;
+  setRevisionInput: (v: string) => void;
+  onRequestChanges: () => void;
+  onApproveAndBuild: () => void;
+  onCancel: () => void;
 }) {
   const [showVersions, setShowVersions] = useState(false);
+
+  const canApprove = plan && ["draft", "revised"].includes(plan.status);
+  const canRevise = plan && ["draft", "revised"].includes(plan.status);
+  const canCancel = plan && !["built", "cancelled"].includes(plan.status);
+  const isBuilding = plan?.status === "building";
+  const isBuilt = plan?.status === "built";
 
   if (!plan) {
     return (
@@ -695,10 +932,10 @@ function PlanTab({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto flex flex-col">
       {/* Version selector */}
       {versions.length > 0 && (
-        <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800">
+        <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <button
             onClick={() => setShowVersions(!showVersions)}
             className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700"
@@ -707,11 +944,11 @@ function PlanTab({
             Versão {plan.plan_version}
             <ChevronDown className={`w-3 h-3 transition-transform ${showVersions ? "rotate-180" : ""}`} />
           </button>
-          
+
           {showVersions && (
             <div className="mt-2 space-y-1">
               {versions.map((v) => (
-                <div key={v.version} className="text-xs px-2 py-1 rounded bg-gray-50 dark:bg-gray-800">
+                <div key={v.version} className="text-xs px-2 py-1 rounded bg-muted/50">
                   <span className="font-medium">v{v.version}</span>
                   <span className="text-gray-400 ml-2">
                     {new Date(v.created_at).toLocaleString("pt-BR")}
@@ -727,24 +964,129 @@ function PlanTab({
       )}
 
       {/* Plan content */}
-      <div className="p-4 prose prose-sm dark:prose-invert max-w-none"
+      <div className="flex-1 overflow-y-auto p-4 prose prose-sm dark:prose-invert max-w-none"
         style={{ fontSize: "14px", lineHeight: "1.6" }}
       >
         <PlanMarkdown content={plan.plan_md} />
       </div>
 
-      {/* Link para flow gerado */}
-      {plan.status === "built" && plan.result_flow_id && (
-        <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-emerald-50 dark:bg-emerald-950/30">
-          <a 
-            href={`/flow/${plan.result_flow_id}`}
-            className="flex items-center gap-2 text-sm text-emerald-600 hover:text-emerald-700"
+      {/* Actions Section */}
+      <div className="flex-shrink-0 p-4 border-t border-border space-y-3 bg-muted/20">
+        {/* Request Changes */}
+        {canRevise && (
+          <div className="space-y-2">
+            {showRevisionInput ? (
+              <div className="space-y-2">
+                <textarea
+                  value={revisionInput}
+                  onChange={(e) => setRevisionInput(e.target.value)}
+                  placeholder="Descreva as mudanças necessárias..."
+                  className="w-full px-3 py-2 rounded-lg border border-input 
+                    bg-background text-sm resize-none h-20
+                    focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={onRequestChanges}
+                    disabled={!revisionInput.trim() || isLoading}
+                    className="flex-1 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium
+                      hover:bg-secondary/80 disabled:opacity-50 transition-colors
+                      flex items-center justify-center gap-2"
+                  >
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                    Solicitar Revisão
+                  </button>
+                  <button
+                    onClick={() => setShowRevisionInput(false)}
+                    className="px-3 py-2 rounded-lg border border-input
+                      text-sm hover:bg-muted transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowRevisionInput(true)}
+                className="w-full py-2.5 rounded-lg border-2 border-dashed border-border
+                  text-muted-foreground text-sm font-medium
+                  hover:border-primary hover:text-primary transition-colors
+                  flex items-center justify-center gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Solicitar Alterações
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Approve & Build */}
+        {canApprove && (
+          <button
+            onClick={onApproveAndBuild}
+            disabled={isLoading}
+            className="w-full py-3 rounded-lg bg-primary 
+              text-primary-foreground font-semibold text-sm
+              hover:bg-primary/90 disabled:opacity-50
+              transition-all shadow-lg shadow-primary/20
+              flex items-center justify-center gap-2"
           >
-            <ExternalLink className="w-4 h-4" />
-            Ver flow gerado #{plan.result_flow_id}
-          </a>
-        </div>
-      )}
+            {isLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Check className="w-5 h-5" />
+            )}
+            Aprovar & Construir Flow
+          </button>
+        )}
+
+        {/* Building status */}
+        {isBuilding && (
+          <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 text-amber-600 animate-spin" />
+              <div>
+                <p className="font-medium text-amber-700 dark:text-amber-400">Construindo flow...</p>
+                <p className="text-xs text-amber-600 mt-0.5">Isso pode levar alguns segundos</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Built status */}
+        {isBuilt && plan.result_flow_id && (
+          <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+            <div className="flex items-center gap-3">
+              <Check className="w-5 h-5 text-emerald-600" />
+              <div>
+                <p className="font-medium text-emerald-700 dark:text-emerald-400">Flow construído!</p>
+                <a
+                  href={`/flow/${plan.result_flow_id}`}
+                  className="text-xs text-emerald-600 hover:underline flex items-center gap-1 mt-0.5"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Abrir flow #{plan.result_flow_id}
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cancel */}
+        {canCancel && (
+          <button
+            onClick={onCancel}
+            disabled={isLoading}
+            className="w-full py-2 rounded-lg border border-destructive/20
+              text-destructive text-sm font-medium
+              hover:bg-destructive/10 transition-colors
+              flex items-center justify-center gap-2"
+          >
+            <X className="w-4 h-4" />
+            Cancelar Plano
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -752,12 +1094,12 @@ function PlanTab({
 function PlanMarkdown({ content }: { content: string }) {
   // Renderização simplificada de markdown
   const lines = content.split("\n");
-  
+
   return (
     <>
       {lines.map((line, i) => {
         if (line.startsWith("## ")) {
-          return <h2 key={i} className="text-lg font-semibold mt-4 mb-2 text-violet-700 dark:text-violet-400">{line.slice(3)}</h2>;
+          return <h2 key={i} className="text-lg font-semibold mt-4 mb-2 text-primary">{line.slice(3)}</h2>;
         }
         if (line.startsWith("### ")) {
           return <h3 key={i} className="text-base font-semibold mt-3 mb-1">{line.slice(4)}</h3>;
@@ -772,7 +1114,7 @@ function PlanMarkdown({ content }: { content: string }) {
           return <p key={i} className="font-semibold my-1">{line.slice(2, -2)}</p>;
         }
         if (line.startsWith("> ")) {
-          return <blockquote key={i} className="border-l-2 border-violet-300 pl-3 italic text-gray-600">{line.slice(2)}</blockquote>;
+          return <blockquote key={i} className="border-l-2 border-primary/50 pl-3 italic text-muted-foreground">{line.slice(2)}</blockquote>;
         }
         if (line.trim()) {
           return <p key={i} className="my-1">{line}</p>;
@@ -783,175 +1125,6 @@ function PlanMarkdown({ content }: { content: string }) {
   );
 }
 
-function ActionsTab({
-  plan,
-  isLoading,
-  showRevisionInput,
-  revisionInput,
-  setShowRevisionInput,
-  setRevisionInput,
-  onRequestChanges,
-  onApproveAndBuild,
-  onCancel,
-}: {
-  plan: BrainFlowPlan | null;
-  isLoading: boolean;
-  showRevisionInput: boolean;
-  revisionInput: string;
-  setShowRevisionInput: (v: boolean) => void;
-  setRevisionInput: (v: string) => void;
-  onRequestChanges: () => void;
-  onApproveAndBuild: () => void;
-  onCancel: () => void;
-}) {
-  const canApprove = plan && ["draft", "revised"].includes(plan.status);
-  const canRevise = plan && ["draft", "revised"].includes(plan.status);
-  const canCancel = plan && !["built", "cancelled"].includes(plan.status);
-  const isBuilding = plan?.status === "building";
-  const isBuilt = plan?.status === "built";
-
-  return (
-    <div className="flex-1 p-4 space-y-4">
-      {!plan ? (
-        <div className="text-center text-gray-400 text-sm py-8">
-          <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p>Nenhum plano disponível</p>
-          <p className="text-xs mt-1">Gere um plano primeiro na aba Chat</p>
-        </div>
-      ) : (
-        <>
-          {/* Status atual */}
-          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600 dark:text-gray-400">Status atual</span>
-              <StatusBadge status={plan.status} version={plan.plan_version} />
-            </div>
-            {plan.approved_at && (
-              <div className="text-xs text-gray-500 mt-1">
-                Aprovado em {new Date(plan.approved_at).toLocaleString("pt-BR")}
-              </div>
-            )}
-          </div>
-
-          {/* Request Changes */}
-          {canRevise && (
-            <div className="space-y-2">
-              {showRevisionInput ? (
-                <div className="space-y-2">
-                  <textarea
-                    value={revisionInput}
-                    onChange={(e) => setRevisionInput(e.target.value)}
-                    placeholder="Descreva as mudanças necessárias..."
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 
-                      bg-white dark:bg-gray-800 text-sm resize-none h-20
-                      focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={onRequestChanges}
-                      disabled={!revisionInput.trim() || isLoading}
-                      className="flex-1 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium
-                        hover:bg-blue-700 disabled:bg-gray-300 transition-colors
-                        flex items-center justify-center gap-2"
-                    >
-                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                      Solicitar Revisão
-                    </button>
-                    <button
-                      onClick={() => setShowRevisionInput(false)}
-                      className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700
-                        text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowRevisionInput(true)}
-                  className="w-full py-2.5 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600
-                    text-gray-600 dark:text-gray-400 text-sm font-medium
-                    hover:border-blue-400 hover:text-blue-600 transition-colors
-                    flex items-center justify-center gap-2"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  Solicitar Alterações
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Approve & Build */}
-          {canApprove && (
-            <button
-              onClick={onApproveAndBuild}
-              disabled={isLoading}
-              className="w-full py-3 rounded-lg bg-gradient-to-r from-emerald-600 to-green-600 
-                text-white font-semibold text-sm
-                hover:from-emerald-700 hover:to-green-700 disabled:from-gray-400 disabled:to-gray-500
-                transition-all shadow-lg shadow-emerald-500/25
-                flex items-center justify-center gap-2"
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Check className="w-5 h-5" />
-              )}
-              Aprovar & Construir Flow
-            </button>
-          )}
-
-          {/* Building status */}
-          {isBuilding && (
-            <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-              <div className="flex items-center gap-3">
-                <Loader2 className="w-5 h-5 text-amber-600 animate-spin" />
-                <div>
-                  <p className="font-medium text-amber-700 dark:text-amber-400">Construindo flow...</p>
-                  <p className="text-xs text-amber-600 mt-0.5">Isso pode levar alguns segundos</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Built status */}
-          {isBuilt && plan.result_flow_id && (
-            <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
-              <div className="flex items-center gap-3">
-                <Check className="w-5 h-5 text-emerald-600" />
-                <div>
-                  <p className="font-medium text-emerald-700 dark:text-emerald-400">Flow construído!</p>
-                  <a 
-                    href={`/flow/${plan.result_flow_id}`}
-                    className="text-xs text-emerald-600 hover:underline flex items-center gap-1 mt-0.5"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    Abrir flow #{plan.result_flow_id}
-                  </a>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Cancel */}
-          {canCancel && (
-            <button
-              onClick={onCancel}
-              disabled={isLoading}
-              className="w-full py-2 rounded-lg border border-red-200 dark:border-red-800
-                text-red-600 text-sm font-medium
-                hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors
-                flex items-center justify-center gap-2"
-            >
-              <X className="w-4 h-4" />
-              Cancelar Plano
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
 
 // ========================================
 // EXPORT
