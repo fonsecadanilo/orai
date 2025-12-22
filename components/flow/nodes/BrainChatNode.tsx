@@ -436,11 +436,21 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
         bg-white dark:bg-gray-900
       `}
     >
-      {/* Handle de entrada */}
+      {/* Handle de entrada (top) - para conexões de flow */}
       <Handle
         type="target"
         position={Position.Top}
+        id="top"
         className="!w-3 !h-3 !bg-violet-500 !border-2 !border-white"
+      />
+      
+      {/* Handle lateral esquerdo (entrada de referência) - para brain links */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="in_ref"
+        className="!w-2.5 !h-2.5 !bg-blue-500 !border-2 !border-white !top-1/2 !-translate-y-1/2"
+        style={{ left: -6 }}
       />
 
       {/* Header */}
@@ -542,11 +552,21 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
         )}
       </div>
 
-      {/* Handle de saída */}
+      {/* Handle de saída (bottom) - para conexões de flow */}
       <Handle
         type="source"
         position={Position.Bottom}
+        id="bottom"
         className="!w-3 !h-3 !bg-violet-500 !border-2 !border-white"
+      />
+      
+      {/* Handle lateral direito (saída de referência) - para brain links */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="out_ref"
+        className="!w-2.5 !h-2.5 !bg-blue-500 !border-2 !border-white !top-1/2 !-translate-y-1/2"
+        style={{ right: -6 }}
       />
     </div>
   );
