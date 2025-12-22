@@ -51,6 +51,7 @@ import { AILoadingOverlay } from "./AILoadingOverlay";
 import { IntegrityScorePanel } from "./IntegrityScorePanel";
 import type { GeneratedFlow, FlowNode as AgentFlowNode } from "@/lib/agents/types";
 import { type SavedFlow, convertSavedFlowToReactFlow } from "@/lib/supabase/flows";
+import { useCanvasEdges } from "@/hooks/useCanvasEdges";
 
 // Registrar todos os tipos de nós disponíveis
 const nodeTypes = {
@@ -517,6 +518,14 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
     // Brain blocks state (para tracking)
     const [brainBlocks, setBrainBlocks] = useState<{ canvas_block: unknown; thread: unknown }[]>([]);
     
+    // Canvas edges hook (conexões Brain ↔ Brain ↔ Flow)
+    const { 
+        reactFlowEdges: canvasEdges, 
+        showBrainLinks, 
+        setShowBrainLinks,
+        createEdge: createCanvasEdge,
+    } = useCanvasEdges(1); // TODO: pegar projectId do contexto
+    
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
 
@@ -534,9 +543,29 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
         }
     }, [selectedFlow, setNodes, setEdges, reactFlowInstance]);
 
+    // Handler para conexões - diferencia entre flow edges e canvas edges (brain links)
     const onConnect = useCallback(
-        (params: Connection) => setEdges((eds) => addEdge(params, eds)),
-        [setEdges]
+        (params: Connection) => {
+            if (!params.source || !params.target) return;
+            
+            // Check se é uma conexão envolvendo brain blocks
+            const isBrainSource = params.source.startsWith("brain-");
+            const isBrainTarget = params.target.startsWith("brain-");
+            const isCanvasEdge = isBrainSource || isBrainTarget;
+            
+            if (isCanvasEdge) {
+                // Criar canvas_edge (brain link) - persiste no banco
+                createCanvasEdge(params).then((edge) => {
+                    if (edge) {
+                        console.log("🔗 Canvas edge created:", edge);
+                    }
+                });
+            } else {
+                // Conexão normal do flow
+                setEdges((eds) => addEdge(params, eds));
+            }
+        },
+        [setEdges, createCanvasEdge]
     );
 
     const onNodeClick = (event: React.MouseEvent, node: Node) => {
@@ -743,7 +772,7 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
         <div className="w-full h-full relative" ref={reactFlowWrapper}>
             <ReactFlow
                 nodes={nodes}
-                edges={edges}
+                edges={[...edges, ...canvasEdges]}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
@@ -757,6 +786,32 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
             >
                 <Background gap={24} size={1} className="dark:[&_svg]:opacity-20" />
                 <ZoomControls />
+                
+                {/* Toggle Brain Links */}
+                <div className="absolute bottom-4 left-4 z-10">
+                    <button
+                        onClick={() => setShowBrainLinks(!showBrainLinks)}
+                        className={`
+                            flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium
+                            transition-all shadow-md border
+                            ${showBrainLinks 
+                                ? "bg-blue-500 text-white border-blue-600" 
+                                : "bg-card text-muted-foreground border-border hover:bg-muted"
+                            }
+                        `}
+                        title={showBrainLinks ? "Esconder Brain Links" : "Mostrar Brain Links"}
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                d={showBrainLinks 
+                                    ? "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                    : "M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                                }
+                            />
+                        </svg>
+                        Brain Links
+                    </button>
+                </div>
             </ReactFlow>
 
             {/* Tool Indicator Overlay when a tool is active */}

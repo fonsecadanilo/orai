@@ -232,7 +232,7 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
     setIsStreaming(data.streaming || false);
   }, [data.content, data.streaming]);
 
-  // Enviar mensagem via Edge Function (streaming)
+  // Enviar mensagem via Edge Function
   const handleSendMessage = useCallback(async () => {
     if (!inputValue.trim() || isLoading || !data.thread_id) return;
 
@@ -256,58 +256,22 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        console.error("Brain message send failed:", error);
-        throw new Error(error.message || "Failed to send message");
+        const errorText = await response.text();
+        console.error("Brain message send failed:", errorText);
+        throw new Error("Failed to send message");
       }
 
-      // Se a resposta for streaming (SSE), processar eventos
-      if (response.headers.get("content-type")?.includes("text/event-stream")) {
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        
-        if (reader) {
-          let buffer = "";
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-            
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                try {
-                  const eventData = JSON.parse(line.slice(6));
-                  if (eventData.type === "complete") {
-                    // Recarregar mensagens quando completo
-                    const { data: msgs } = await supabase
-                      .from("brain_messages")
-                      .select("*")
-                      .eq("thread_id", data.thread_id)
-                      .order("created_at", { ascending: true });
-                    
-                    if (msgs) setMessages(msgs as BrainMessage[]);
-                  }
-                } catch {
-                  // Ignore parse errors
-                }
-              }
-            }
-          }
-        }
-      } else {
-        // Resposta não-streaming, recarregar mensagens
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const { data: msgs } = await supabase
-          .from("brain_messages")
-          .select("*")
-          .eq("thread_id", data.thread_id)
-          .order("created_at", { ascending: true });
-        
-        if (msgs) setMessages(msgs as BrainMessage[]);
-      }
+      const result = await response.json();
+      console.log("💬 Brain response:", result);
+
+      // Recarregar mensagens
+      const { data: msgs } = await supabase
+        .from("brain_messages")
+        .select("*")
+        .eq("thread_id", data.thread_id)
+        .order("created_at", { ascending: true });
+      
+      if (msgs) setMessages(msgs as BrainMessage[]);
 
       console.log("💬 Message sent successfully!");
     } catch (error) {
@@ -341,12 +305,10 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
         }),
       });
 
-      if (!response.ok) {
-        console.error("Request changes failed");
-      }
+      const result = await response.json();
+      console.log("💬 Revision response:", result);
 
-      // Aguardar e recarregar mensagens
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Recarregar mensagens
       const { data: msgs } = await supabase
         .from("brain_messages")
         .select("*")
@@ -436,11 +398,21 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
         bg-white dark:bg-gray-900
       `}
     >
-      {/* Handle de entrada */}
+      {/* Handle de entrada (top) - para conexões de flow */}
       <Handle
         type="target"
         position={Position.Top}
+        id="top"
         className="!w-3 !h-3 !bg-violet-500 !border-2 !border-white"
+      />
+      
+      {/* Handle lateral esquerdo (entrada de referência) - para brain links */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="in_ref"
+        className="!w-2.5 !h-2.5 !bg-blue-500 !border-2 !border-white !top-1/2 !-translate-y-1/2"
+        style={{ left: -6 }}
       />
 
       {/* Header */}
@@ -542,11 +514,21 @@ function BrainChatNodeComponent({ data, selected }: NodeProps<BrainChatNodeData>
         )}
       </div>
 
-      {/* Handle de saída */}
+      {/* Handle de saída (bottom) - para conexões de flow */}
       <Handle
         type="source"
         position={Position.Bottom}
+        id="bottom"
         className="!w-3 !h-3 !bg-violet-500 !border-2 !border-white"
+      />
+      
+      {/* Handle lateral direito (saída de referência) - para brain links */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="out_ref"
+        className="!w-2.5 !h-2.5 !bg-blue-500 !border-2 !border-white !top-1/2 !-translate-y-1/2"
+        style={{ right: -6 }}
       />
     </div>
   );
