@@ -2,10 +2,10 @@
 
 import { memo, useState } from "react";
 import { Handle, Position } from "reactflow";
-import { 
-  FileInput, 
-  ChevronDown, 
-  ChevronRight, 
+import {
+  FileInput,
+  ChevronDown,
+  ChevronRight,
   AlertCircle,
   CheckCircle2,
   Type,
@@ -72,8 +72,8 @@ interface FormNodeV3Props {
 }
 
 const IMPACT_COLORS: Record<ImpactLevel, string> = {
-  low: "border-slate-300 dark:border-slate-600",
-  medium: "border-blue-400 dark:border-blue-500",
+  low: "border-slate-300 dark:border-slate-400",
+  medium: "border-blue-400 dark:border-blue-400",
   high: "border-orange-500 dark:border-orange-400",
 };
 
@@ -106,7 +106,7 @@ export const FormNodeV3 = memo(function FormNodeV3({ data, selected }: FormNodeV
   const fieldsCount = data.inputs?.length || 0;
   const requiredCount = data.inputs?.filter(f => f.required).length || 0;
   const subnodes = data.subnodes || data.children || [];
-  const validationCount = data.validation_count || 
+  const validationCount = data.validation_count ||
     data.inputs?.reduce((acc, f) => acc + (f.validation_rules?.length || 0), 0) || 0;
 
   return (
@@ -207,7 +207,7 @@ export const FormNodeV3 = memo(function FormNodeV3({ data, selected }: FormNodeV
         {/* Fields Preview - Collapsible */}
         {fieldsCount > 0 && (
           <div className="border-t border-border/50 pt-2">
-            <button 
+            <button
               onClick={() => setIsFieldsCollapsed(!isFieldsCollapsed)}
               className="flex items-center gap-1 text-[10px] text-muted-foreground mb-2 w-full hover:text-foreground transition-colors"
             >
@@ -251,7 +251,7 @@ export const FormNodeV3 = memo(function FormNodeV3({ data, selected }: FormNodeV
 
         {/* Subnodes */}
         {subnodes.length > 0 && (
-          <CollapsibleSubnodes 
+          <CollapsibleSubnodes
             subnodes={subnodes}
             defaultExpanded={false}
             maxVisible={3}
@@ -263,15 +263,15 @@ export const FormNodeV3 = memo(function FormNodeV3({ data, selected }: FormNodeV
           <div className="mt-3 pt-2 border-t border-border/30">
             <div className="flex items-center gap-1.5 flex-wrap">
               {data.actions.slice(0, 2).map((action, idx) => (
-                <span 
+                <span
                   key={idx}
                   className={cn(
                     "text-[9px] px-2 py-1 rounded-md font-medium",
-                    action.action_type === "primary" 
-                      ? "bg-blue-500 text-white" 
+                    action.action_type === "primary"
+                      ? "bg-blue-500 text-white"
                       : action.action_type === "danger"
-                      ? "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300"
-                      : "bg-muted text-muted-foreground"
+                        ? "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300"
+                        : "bg-muted text-muted-foreground"
                   )}
                 >
                   {action.label}
