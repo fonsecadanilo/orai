@@ -30,30 +30,30 @@ const FEEDBACK_CONFIG: Record<FeedbackType, {
 }> = {
   success: {
     icon: CheckCircle2,
-    bgColor: "bg-green-50",
-    borderColor: "border-green-400",
-    iconColor: "text-green-500",
+    bgColor: "bg-green-50 dark:bg-green-950/30",
+    borderColor: "border-green-400 dark:border-green-400",
+    iconColor: "text-green-500 dark:text-green-400",
     label: "Sucesso",
   },
   error: {
     icon: XCircle,
-    bgColor: "bg-red-50",
-    borderColor: "border-red-400",
-    iconColor: "text-red-500",
+    bgColor: "bg-red-50 dark:bg-red-950/30",
+    borderColor: "border-red-400 dark:border-red-400",
+    iconColor: "text-red-500 dark:text-red-400",
     label: "Erro",
   },
   info: {
     icon: Info,
-    bgColor: "bg-blue-50",
-    borderColor: "border-blue-400",
-    iconColor: "text-blue-500",
+    bgColor: "bg-blue-50 dark:bg-blue-950/30",
+    borderColor: "border-blue-400 dark:border-blue-400",
+    iconColor: "text-blue-500 dark:text-blue-400",
     label: "Informação",
   },
   warning: {
     icon: AlertTriangle,
-    bgColor: "bg-amber-50",
-    borderColor: "border-amber-400",
-    iconColor: "text-amber-500",
+    bgColor: "bg-amber-50 dark:bg-amber-950/30",
+    borderColor: "border-amber-400 dark:border-amber-400",
+    iconColor: "text-amber-500 dark:text-amber-400",
     label: "Aviso",
   },
 };
@@ -123,11 +123,11 @@ export const FeedbackNodeV3 = memo(function FeedbackNodeV3({ data, selected }: F
         {data.action_label && (
           <span className={cn(
             "text-[10px] px-2 py-0.5 rounded font-medium",
-            feedbackType === "success" 
+            feedbackType === "success"
               ? "bg-green-200 text-green-700"
               : feedbackType === "error"
-              ? "bg-red-200 text-red-700"
-              : "bg-blue-200 text-blue-700"
+                ? "bg-red-200 text-red-700"
+                : "bg-blue-200 text-blue-700"
           )}>
             {data.action_label}
           </span>

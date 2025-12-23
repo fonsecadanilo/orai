@@ -38,7 +38,7 @@ export const ConditionNodeV3 = memo(function ConditionNodeV3({ data, selected }:
   return (
     <div
       className={cn(
-        "bg-card rounded-xl shadow-md border-2 border-indigo-400 dark:border-indigo-500 transition-all duration-200 relative w-[240px] group",
+        "bg-card rounded-xl shadow-md border-2 border-indigo-400 dark:border-indigo-400 transition-all duration-200 relative w-[240px] group",
         selected && "ring-2 ring-primary ring-offset-2",
         "hover:shadow-xl hover:scale-[1.02]"
       )}
@@ -49,7 +49,7 @@ export const ConditionNodeV3 = memo(function ConditionNodeV3({ data, selected }:
         position={Position.Left}
         className="!w-4 !h-4 !bg-indigo-500 !border-2 !border-white !rounded-full z-20 !-left-2 shadow-md"
       />
-      
+
       {/* Single output handle - let ReactFlow connect edges */}
       <Handle
         type="source"

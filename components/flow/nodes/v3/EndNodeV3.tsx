@@ -28,23 +28,23 @@ const END_CONFIG: Record<EndType, {
 }> = {
   success: {
     icon: CheckCircle2,
-    bgColor: "bg-green-50",
-    borderColor: "border-green-500",
-    iconColor: "text-green-600",
+    bgColor: "bg-green-50 dark:bg-green-950/30",
+    borderColor: "border-green-500 dark:border-green-400",
+    iconColor: "text-green-600 dark:text-green-400",
     label: "Sucesso",
   },
   error: {
     icon: XOctagon,
-    bgColor: "bg-red-50",
-    borderColor: "border-red-500",
-    iconColor: "text-red-600",
+    bgColor: "bg-red-50 dark:bg-red-950/30",
+    borderColor: "border-red-500 dark:border-red-400",
+    iconColor: "text-red-600 dark:text-red-400",
     label: "Erro",
   },
   neutral: {
     icon: Circle,
-    bgColor: "bg-slate-50",
-    borderColor: "border-slate-400",
-    iconColor: "text-slate-500",
+    bgColor: "bg-slate-50 dark:bg-slate-900/30",
+    borderColor: "border-slate-400 dark:border-slate-400",
+    iconColor: "text-slate-500 dark:text-slate-400",
     label: "Neutro",
   },
 };

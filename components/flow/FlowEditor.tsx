@@ -64,42 +64,42 @@ const nodeTypes = {
     fieldGroup: FieldGroupNode, // Alias
     end: EndNode,
     text: TextNode,
-    
+
     // Nós de compatibilidade/legacy
     logic: LogicNode, // Alias para condition
     textblock: TextBlockNode, // Alias para text
     postit: PostItNode,
-    
+
     // Brain Chat Node - IA conversacional
     brain_chat: BrainChatNode,
-    
+
     // ========================================
     // NOVOS TIPOS v3.1 - Metodologia Oria
     // Usando componentes específicos v3
     // ========================================
-    
+
     // Tipos básicos v3
     form: FormNodeV3,                  // Formulário com campos colapsáveis
     choice: ChoiceNodeV3,              // Escolha entre opções
     feedback_success: FeedbackNodeV3,  // Feedback de sucesso
     feedback_error: FeedbackNodeV3,    // Feedback de erro
-    
+
     // Tipos de término v3
     end_success: EndNodeV3,            // Fim com sucesso
     end_error: EndNodeV3,              // Fim com erro
     end_neutral: EndNodeV3,            // Fim neutro
-    
+
     // Tipos de recuperação v3
     retry: RetryNodeV3,                // Retry
     fallback: FallbackNodeV3,          // Fallback
     loopback: LoopbackNodeV3,          // Loopback
-    
+
     // Tipos avançados v3
     background_action: BackgroundActionNodeV3,     // Ação em background
     delayed_action: DelayedActionNodeV3,           // Ação com delay
     configuration_matrix: ConfigurationMatrixNodeV3, // Matriz de configuração
     insight_branch: InsightBranchNodeV3,           // Branch com insight
-    
+
     // Aliases para Flow Synthesizer
     entry_point: TriggerNode,
     user_action: ActionNodeV3,
@@ -133,9 +133,9 @@ const initialNodes: Node[] = [
         id: "action-1",
         type: "action",
         position: { x: 1100, y: 140 },
-        data: { 
-            label: "Welcome", 
-            description: "Send welcome email", 
+        data: {
+            label: "Welcome",
+            description: "Send welcome email",
             category: "api",
             verb: "enviar",
             outputs: ["success", "error"]
@@ -145,9 +145,9 @@ const initialNodes: Node[] = [
         id: "action-2",
         type: "action",
         position: { x: 1100, y: 380 },
-        data: { 
-            label: "Show Error", 
-            description: "Request email correction", 
+        data: {
+            label: "Show Error",
+            description: "Request email correction",
             category: "ui",
             verb: "exibir",
             outputs: ["error"]
@@ -166,39 +166,39 @@ const agentTypeToReactFlowType: Record<string, string> = {
     field_group: "fieldGroup",
     end: "end",
     text: "text",
-    
+
     // Tipos legacy/compatibilidade
     input: "action",
     wait: "action",
     note: "text",
     logic: "condition",
-    
+
     // ========================================
     // TIPOS v3.1 - Metodologia Oria
     // ========================================
-    
+
     // Tipos básicos v3
     form: "form",
     choice: "choice",
     feedback_success: "feedback_success",
     feedback_error: "feedback_error",
-    
+
     // Tipos de término v3
     end_success: "end_success",
     end_error: "end_error",
     end_neutral: "end_neutral",
-    
+
     // Tipos de recuperação v3
     retry: "retry",
     fallback: "fallback",
     loopback: "loopback",
-    
+
     // Tipos avançados v3
     background_action: "background_action",
     delayed_action: "delayed_action",
     configuration_matrix: "configuration_matrix",
     insight_branch: "insight_branch",
-    
+
     // Tipos do Flow Synthesizer
     entry_point: "trigger",
     user_action: "action",
@@ -230,15 +230,15 @@ function convertGeneratedFlowToReactFlow(
     // Create ID mapping from agent IDs to ReactFlow IDs
     const idMap = new Map<string, string>();
     const timestamp = Date.now();
-    
+
     console.log("🔄 [convertGeneratedFlowToReactFlow] Received:", {
         nodes: generatedFlow.nodes.length,
         connections: generatedFlow.connections.length,
     });
-    
+
     const nodes: Node[] = generatedFlow.nodes.map((node, index) => {
         const reactFlowId = `ai-${node.type}-${timestamp}-${index}`;
-        
+
         // Map by multiple possible keys
         idMap.set(node.id, reactFlowId);
         if (node.db_id) {
@@ -246,12 +246,12 @@ function convertGeneratedFlowToReactFlow(
         }
         // Also map by index as fallback
         idMap.set(String(index), reactFlowId);
-        
+
         console.log(`  📦 Node ${index}: id="${node.id}", type="${node.type}", reactFlowId="${reactFlowId}"`);
-        
+
         // IMPORTANT: Use the exact V3 type from the node - don't remap to legacy types
         const reactFlowType = agentTypeToReactFlowType[node.type] || node.type;
-        
+
         // Build node data based on type
         const nodeData: Record<string, unknown> = {
             label: node.title,
@@ -268,7 +268,7 @@ function convertGeneratedFlowToReactFlow(
             reuse_info: (node as any).reuse_info,
             column: (node as any).column,
         };
-        
+
         // Add type-specific fields
         switch (node.type) {
             case 'action':
@@ -341,7 +341,7 @@ function convertGeneratedFlowToReactFlow(
                 nodeData.triggerType = 'user_action';
                 break;
         }
-        
+
         return {
             id: reactFlowId,
             type: reactFlowType,
@@ -358,44 +358,44 @@ function convertGeneratedFlowToReactFlow(
             // Get source and target IDs with multiple fallbacks
             const sourceKey = conn.source_id || String(conn.source_node_id) || "";
             const targetKey = conn.target_id || String(conn.target_node_id) || "";
-            
+
             // Find in map with fallbacks
             let sourceId = idMap.get(sourceKey) || idMap.get(String(conn.source_node_id)) || sourceKey;
             let targetId = idMap.get(targetKey) || idMap.get(String(conn.target_node_id)) || targetKey;
-            
+
             // Skip edge if source or target not found
             if (!sourceId || !targetId) {
                 console.warn(`  ⚠️ Edge ${index}: Missing source or target, skipping`);
                 return null;
             }
-            
+
             console.log(`  🔗 Edge ${index}: "${sourceKey}" → "${targetKey}" (type: ${(conn as any).connection_type || conn.label || 'default'})`);
-            
+
             // Determine edge style based on connection type
             const connType = ((conn as any).connection_type || (conn as any).type || "").toLowerCase();
             const label = (conn.label || "").toLowerCase();
-            
+
             // Classify connection
-            const isErrorPath = 
-                connType === "failure" || 
-                connType === "fallback" || 
+            const isErrorPath =
+                connType === "failure" ||
+                connType === "fallback" ||
                 connType === "error" ||
-                label === "no" || 
-                label === "não" || 
+                label === "no" ||
+                label === "não" ||
                 label === "error" ||
                 label === "erro";
-            
-            const isSuccessPath = 
-                connType === "success" || 
+
+            const isSuccessPath =
+                connType === "success" ||
                 connType === "default" ||
-                label === "yes" || 
-                label === "sim" || 
+                label === "yes" ||
+                label === "sim" ||
                 label === "success" ||
                 label === "sucesso";
-            
+
             let strokeColor = EDGE_COLORS.default;
             let sourceHandle: string | undefined = undefined;
-            
+
             if (isErrorPath) {
                 strokeColor = EDGE_COLORS.error;
                 // Don't set sourceHandle for error - let ReactFlow use default
@@ -403,7 +403,7 @@ function convertGeneratedFlowToReactFlow(
                 strokeColor = EDGE_COLORS.success;
                 // Don't set sourceHandle for success - let ReactFlow use default
             }
-            
+
             return {
                 id: `ai-edge-${timestamp}-${index}`,
                 source: sourceId,
@@ -500,32 +500,34 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-    
+    const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
+
     // Tool states
     const [activeTool, setActiveTool] = useState<ToolType>("none");
     const [selectedNodeType, setSelectedNodeType] = useState<NodeType | null>(null);
     const [isNodeConfigOpen, setIsNodeConfigOpen] = useState(false);
     const [pendingNodePosition, setPendingNodePosition] = useState<{ x: number; y: number } | null>(null);
-    
+
     // AI Loading state
     const [isAILoading, setIsAILoading] = useState(false);
-    
+
     // v3 Integrity Score state
     const [integrityScore, setIntegrityScore] = useState<number | null>(null);
     const [integrityFindings, setIntegrityFindings] = useState<IntegrityFinding[]>([]);
     const [showIntegrityPanel, setShowIntegrityPanel] = useState(false);
-    
+
     // Brain blocks state (para tracking)
     const [brainBlocks, setBrainBlocks] = useState<{ canvas_block: unknown; thread: unknown }[]>([]);
-    
+
     // Canvas edges hook (conexões Brain ↔ Brain ↔ Flow)
-    const { 
-        reactFlowEdges: canvasEdges, 
-        showBrainLinks, 
+    const {
+        reactFlowEdges: canvasEdges,
+        showBrainLinks,
         setShowBrainLinks,
         createEdge: createCanvasEdge,
+        deleteEdge: deleteCanvasEdge,
     } = useCanvasEdges(1); // TODO: pegar projectId do contexto
-    
+
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
 
@@ -535,7 +537,7 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
             const { nodes: newNodes, edges: newEdges } = convertSavedFlowToReactFlow(selectedFlow);
             setNodes(newNodes);
             setEdges(newEdges);
-            
+
             // Fazer fit view após um pequeno delay para garantir que os nós foram renderizados
             setTimeout(() => {
                 reactFlowInstance?.fitView({ padding: 0.2, duration: 500 });
@@ -547,12 +549,12 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
     const onConnect = useCallback(
         (params: Connection) => {
             if (!params.source || !params.target) return;
-            
+
             // Check se é uma conexão envolvendo brain blocks
             const isBrainSource = params.source.startsWith("brain-");
             const isBrainTarget = params.target.startsWith("brain-");
             const isCanvasEdge = isBrainSource || isBrainTarget;
-            
+
             if (isCanvasEdge) {
                 // Criar canvas_edge (brain link) - persiste no banco
                 createCanvasEdge(params).then((edge) => {
@@ -577,64 +579,128 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
         }
     };
 
-    // Delete node handler
+    // Edge click handler - select/deselect edge
+    const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+        event.stopPropagation();
+        setSelectedEdgeIds((prev) => {
+            if (prev.includes(edge.id)) {
+                return prev.filter((id) => id !== edge.id);
+            }
+            // If shift is pressed, add to selection, otherwise replace
+            if (event.shiftKey) {
+                return [...prev, edge.id];
+            }
+            return [edge.id];
+        });
+    }, []);
+
+    // Delete selected edges handler
+    const handleDeleteSelectedEdges = useCallback(async () => {
+        if (selectedEdgeIds.length === 0) return;
+
+        // Separate canvas edges from flow edges
+        const canvasEdgeIds = selectedEdgeIds.filter((id) =>
+            canvasEdges.some((e) => e.id === id)
+        );
+        const flowEdgeIds = selectedEdgeIds.filter((id) =>
+            !canvasEdgeIds.includes(id)
+        );
+
+        // Delete flow edges from local state
+        if (flowEdgeIds.length > 0) {
+            setEdges((eds) => eds.filter((edge) => !flowEdgeIds.includes(edge.id)));
+        }
+
+        // Delete canvas edges from database
+        for (const edgeId of canvasEdgeIds) {
+            await deleteCanvasEdge(edgeId);
+        }
+
+        setSelectedEdgeIds([]);
+    }, [selectedEdgeIds, setEdges, canvasEdges, deleteCanvasEdge]);
+
+    // Keyboard handler for Delete key
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Delete" || event.key === "Backspace") {
+                // Only delete if not focused on an input
+                const activeElement = document.activeElement;
+                const isInput = activeElement?.tagName === "INPUT" ||
+                    activeElement?.tagName === "TEXTAREA" ||
+                    activeElement?.getAttribute("contenteditable") === "true";
+
+                if (!isInput && selectedEdgeIds.length > 0) {
+                    event.preventDefault();
+                    handleDeleteSelectedEdges();
+                }
+            }
+            // Escape to deselect
+            if (event.key === "Escape") {
+                setSelectedEdgeIds([]);
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [selectedEdgeIds, handleDeleteSelectedEdges]);
+
+    // Delete node handler - defined early so it can be used below
     const handleDeleteNode = useCallback((nodeId: string) => {
         setNodes((nds) => nds.filter((node) => node.id !== nodeId));
     }, [setNodes]);
 
-    // Handle canvas click for tool actions
-    const onPaneClick = useCallback(
-        (event: React.MouseEvent) => {
-            if (activeTool === "none" || !reactFlowInstance) return;
+    // Clear edge selection when clicking on pane
+    const handlePaneClickWithDeselect = useCallback((event: React.MouseEvent) => {
+        setSelectedEdgeIds([]);
+        // Call original pane click handler
+        if (activeTool === "none" || !reactFlowInstance) return;
 
-            // Get the position where user clicked in flow coordinates
-            const bounds = reactFlowWrapper.current?.getBoundingClientRect();
-            if (!bounds) return;
+        const bounds = reactFlowWrapper.current?.getBoundingClientRect();
+        if (!bounds) return;
 
-            const position = reactFlowInstance.screenToFlowPosition({
-                x: event.clientX - bounds.left,
-                y: event.clientY - bounds.top,
-            });
+        const position = reactFlowInstance.screenToFlowPosition({
+            x: event.clientX - bounds.left,
+            y: event.clientY - bounds.top,
+        });
 
-            if (activeTool === "text") {
-                // Create text node (comment type by default)
-                const newNode: Node = {
-                    id: `text-${Date.now()}`,
-                    type: "text",
-                    position,
-                    data: { 
-                        label: "Comentário",
-                        subtype: "comment",
-                        content: "",
-                        onDelete: handleDeleteNode 
-                    },
-                    draggable: true,
-                };
-                setNodes((nds) => [...nds, newNode]);
-                setActiveTool("none");
-            } else if (activeTool === "postit") {
-                // Create post-it node
-                const newNode: Node = {
-                    id: `postit-${Date.now()}`,
-                    type: "postit",
-                    position,
-                    data: { 
-                        text: "", 
-                        colorIndex: Math.floor(Math.random() * 6) + 1, // Random color, excluding white
-                        onDelete: handleDeleteNode 
-                    },
-                    draggable: true,
-                };
-                setNodes((nds) => [...nds, newNode]);
-                setActiveTool("none");
-            } else if (activeTool === "node" && selectedNodeType) {
-                // Store position and open config sheet
-                setPendingNodePosition(position);
-                setIsNodeConfigOpen(true);
-            }
-        },
-        [activeTool, selectedNodeType, reactFlowInstance, setNodes, handleDeleteNode]
-    );
+        if (activeTool === "text") {
+            const newNode: Node = {
+                id: `text-${Date.now()}`,
+                type: "text",
+                position,
+                data: {
+                    label: "Comentário",
+                    subtype: "comment",
+                    content: "",
+                    onDelete: handleDeleteNode
+                },
+                draggable: true,
+            };
+            setNodes((nds) => [...nds, newNode]);
+            setActiveTool("none");
+        } else if (activeTool === "postit") {
+            const newNode: Node = {
+                id: `postit-${Date.now()}`,
+                type: "postit",
+                position,
+                data: {
+                    text: "",
+                    colorIndex: Math.floor(Math.random() * 6) + 1,
+                    onDelete: handleDeleteNode
+                },
+                draggable: true,
+            };
+            setNodes((nds) => [...nds, newNode]);
+            setActiveTool("none");
+        } else if (activeTool === "node" && selectedNodeType) {
+            setPendingNodePosition(position);
+            setIsNodeConfigOpen(true);
+        }
+    }, [activeTool, selectedNodeType, reactFlowInstance, setNodes]);
+
+    // Note: handleDeleteNode is defined earlier in the file
+
+    // Note: handlePaneClickWithDeselect above combines edge deselection with pane click handling
 
     // Handle node configuration confirm
     const handleNodeConfigConfirm = useCallback(
@@ -654,11 +720,11 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
                 data: {
                     label: config.label,
                     description: config.description,
-                    ...(nodeType === "condition" && { 
+                    ...(nodeType === "condition" && {
                         expression: config.tag || config.label,
                         paths: { yes: '', no: '' }
                     }),
-                    ...(nodeType === "action" && { 
+                    ...(nodeType === "action" && {
                         category: 'ui',
                         verb: config.label,
                         outputs: config.actionType === 'error' ? ['error'] : ['success', 'error']
@@ -731,13 +797,13 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
     // Handler para quando o fluxo é gerado pela IA
     const handleFlowGenerated = useCallback((generatedFlow: GeneratedFlow) => {
         console.log("🎨 Renderizando fluxo gerado pela IA:", generatedFlow.name);
-        
+
         const { nodes: newNodes, edges: newEdges } = convertGeneratedFlowToReactFlow(generatedFlow);
-        
+
         // Substituir nós e edges atuais pelos gerados
         setNodes(newNodes);
         setEdges(newEdges);
-        
+
         // Extrair dados v3 se disponíveis (do metadata do flow)
         const flowAny = generatedFlow as any;
         if (flowAny.integrity_score !== undefined) {
@@ -747,7 +813,7 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
         if (flowAny.findings) {
             setIntegrityFindings(flowAny.findings);
         }
-        
+
         // Fazer fit view após um pequeno delay para garantir que os nós foram renderizados
         setTimeout(() => {
             reactFlowInstance?.fitView({ padding: 0.2, duration: 500 });
@@ -772,21 +838,30 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
         <div className="w-full h-full relative" ref={reactFlowWrapper}>
             <ReactFlow
                 nodes={nodes}
-                edges={[...edges, ...canvasEdges]}
+                edges={[...edges, ...canvasEdges].map((edge) => ({
+                    ...edge,
+                    selected: selectedEdgeIds.includes(edge.id),
+                    style: selectedEdgeIds.includes(edge.id)
+                        ? { ...edge.style, stroke: '#8b5cf6', strokeWidth: 3 }
+                        : edge.style,
+                }))}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 nodeTypes={nodeTypes}
                 onNodeClick={onNodeClick}
-                onPaneClick={onPaneClick}
+                onEdgeClick={onEdgeClick}
+                onPaneClick={handlePaneClickWithDeselect}
                 onInit={setReactFlowInstance}
                 fitView
                 proOptions={{ hideAttribution: true }}
                 className={getCursorClass()}
+                edgesUpdatable
+                edgesFocusable
             >
                 <Background gap={24} size={1} className="dark:[&_svg]:opacity-20" />
                 <ZoomControls />
-                
+
                 {/* Toggle Brain Links */}
                 <div className="absolute bottom-4 left-4 z-10">
                     <button
@@ -794,16 +869,16 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
                         className={`
                             flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium
                             transition-all shadow-md border
-                            ${showBrainLinks 
-                                ? "bg-blue-500 text-white border-blue-600" 
+                            ${showBrainLinks
+                                ? "bg-blue-500 text-white border-blue-600"
                                 : "bg-card text-muted-foreground border-border hover:bg-muted"
                             }
                         `}
                         title={showBrainLinks ? "Esconder Brain Links" : "Mostrar Brain Links"}
                     >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                d={showBrainLinks 
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d={showBrainLinks
                                     ? "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
                                     : "M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
                                 }
@@ -822,12 +897,11 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
                         <span className="text-sm font-medium text-card-foreground">
                             {activeTool === "text" && "Clique para adicionar comentário"}
                             {activeTool === "postit" && "Clique para adicionar post-it"}
-                            {activeTool === "node" && `Clique para adicionar ${
-                                selectedNodeType === "trigger" ? "Trigger" :
+                            {activeTool === "node" && `Clique para adicionar ${selectedNodeType === "trigger" ? "Trigger" :
                                 selectedNodeType === "logic" ? "Condição" : "Ação"
-                            }`}
+                                }`}
                         </span>
-                        <button 
+                        <button
                             onClick={() => {
                                 setActiveTool("none");
                                 setSelectedNodeType(null);
@@ -872,7 +946,7 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
             )}
 
             {/* Floating UI */}
-            <AIPrompt 
+            <AIPrompt
                 activeTool={activeTool}
                 onToolSelect={setActiveTool}
                 selectedNodeType={selectedNodeType}
@@ -883,15 +957,15 @@ export function FlowEditor({ onOpenProjectInfo, selectedFlow, isLoadingFlow }: F
                 projectId={1}
                 userId={1}
             />
-            <DetailsSheet 
-                isOpen={isSheetOpen} 
+            <DetailsSheet
+                isOpen={isSheetOpen}
                 onClose={() => {
                     setIsSheetOpen(false);
                     setSelectedNode(null);
-                }} 
+                }}
                 selectedNode={selectedNode}
             />
-            
+
             {/* Node Config Sheet */}
             <NodeConfigSheet
                 isOpen={isNodeConfigOpen}

@@ -2,10 +2,10 @@
 
 import { memo } from "react";
 import { Handle, Position } from "reactflow";
-import { 
-  Zap, 
-  CheckCircle2, 
-  AlertCircle, 
+import {
+  Zap,
+  CheckCircle2,
+  AlertCircle,
   Loader2,
   Send,
   Save,
@@ -66,20 +66,20 @@ const STATUS_CONFIG: Record<ActionStatus, { icon: React.ElementType; color: stri
 };
 
 const IMPACT_STYLES: Record<ImpactLevel, { border: string; badge: string; badgeText: string }> = {
-  low: { 
-    border: "border-slate-300 dark:border-slate-600", 
-    badge: "bg-slate-100 dark:bg-slate-800", 
-    badgeText: "text-slate-600 dark:text-slate-300" 
+  low: {
+    border: "border-slate-300 dark:border-slate-400",
+    badge: "bg-slate-100 dark:bg-slate-800",
+    badgeText: "text-slate-600 dark:text-slate-300"
   },
-  medium: { 
-    border: "border-amber-400 dark:border-amber-500", 
-    badge: "bg-amber-100 dark:bg-amber-900/50", 
-    badgeText: "text-amber-700 dark:text-amber-300" 
+  medium: {
+    border: "border-amber-400 dark:border-amber-400",
+    badge: "bg-amber-100 dark:bg-amber-900/50",
+    badgeText: "text-amber-700 dark:text-amber-300"
   },
-  high: { 
-    border: "border-red-400 dark:border-red-500", 
-    badge: "bg-red-100 dark:bg-red-900/50", 
-    badgeText: "text-red-700 dark:text-red-300" 
+  high: {
+    border: "border-red-400 dark:border-red-400",
+    badge: "bg-red-100 dark:bg-red-900/50",
+    badgeText: "text-red-700 dark:text-red-300"
   },
 };
 
@@ -89,7 +89,7 @@ export const ActionNodeV3 = memo(function ActionNodeV3({ data, selected }: Actio
   const category = CATEGORY_CONFIG[categoryKey] ? categoryKey : "process";
   const impactLevel = data.impact_level || "medium";
   const status = data.status || "idle";
-  
+
   const categoryConfig = CATEGORY_CONFIG[category];
   const statusConfig = STATUS_CONFIG[status];
   const impactStyle = IMPACT_STYLES[impactLevel];
@@ -120,7 +120,7 @@ export const ActionNodeV3 = memo(function ActionNodeV3({ data, selected }: Actio
       {/* Header with gradient */}
       <div className={cn(
         "px-4 pt-3 pb-2 rounded-t-xl border-b",
-        data.is_destructive 
+        data.is_destructive
           ? "bg-gradient-to-r from-red-50 to-red-100/50 dark:from-red-950/30 dark:to-red-900/20 border-red-200/50 dark:border-red-800/50"
           : "bg-gradient-to-r from-amber-50 to-amber-100/50 dark:from-amber-950/30 dark:to-amber-900/20 border-amber-200/50 dark:border-amber-800/50"
       )}>
@@ -182,14 +182,14 @@ export const ActionNodeV3 = memo(function ActionNodeV3({ data, selected }: Actio
           )}>
             {categoryConfig.label}
           </span>
-          
+
           {data.requires_confirmation && (
             <span className="text-[9px] px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 font-medium flex items-center gap-1">
               <ShieldAlert className="w-3 h-3" />
               Confirm
             </span>
           )}
-          
+
           {data.is_destructive && (
             <span className="text-[9px] px-2 py-0.5 rounded-md bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 font-medium flex items-center gap-1">
               <AlertCircle className="w-3 h-3" />
